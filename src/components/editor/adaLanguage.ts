@@ -138,7 +138,56 @@ export function registerAdaLanguage(monaco: typeof Monaco) {
     },
   });
 
-  // Completion provider
+  // Purple theme — VS Code-like violet/purple aesthetic (matches screenshot)
+  monaco.editor.defineTheme('ada-purple', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      // Keywords: bright purple/violet like VS Code default
+      { token: 'keyword', foreground: 'c586c0', fontStyle: 'bold' },
+      // Types: light blue
+      { token: 'type', foreground: '4ec9b0' },
+      // Strings: warm orange-brown
+      { token: 'string', foreground: 'ce9178' },
+      { token: 'string.char', foreground: 'ce9178' },
+      // Numbers: light green
+      { token: 'number', foreground: 'b5cea8' },
+      { token: 'number.hex', foreground: 'b5cea8' },
+      // Comments: muted green-grey italic
+      { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+      // Operators: white-ish
+      { token: 'operator', foreground: 'd4d4d4' },
+      // Delimiters: slightly muted
+      { token: 'delimiter', foreground: 'cccccc' },
+      // Identifiers: light blue (like VS Code variable color)
+      { token: 'identifier', foreground: '9cdcfe' },
+    ],
+    colors: {
+      // Deep dark navy-purple background
+      'editor.background': '#1e1e2e',
+      'editor.foreground': '#cdd6f4',
+      'editor.lineHighlightBackground': '#2a2a3e',
+      'editor.selectionBackground': '#7c3aed44',
+      'editor.inactiveSelectionBackground': '#7c3aed22',
+      'editorLineNumber.foreground': '#45475a',
+      'editorLineNumber.activeForeground': '#cba6f7',
+      'editorCursor.foreground': '#cba6f7',
+      'editorWhitespace.foreground': '#313244',
+      'editorIndentGuide.background': '#313244',
+      'editorIndentGuide.activeBackground': '#585b70',
+      'editor.findMatchBackground': '#7c3aed55',
+      'editor.findMatchHighlightBackground': '#7c3aed33',
+      'editorGutter.background': '#1e1e2e',
+      'scrollbarSlider.background': '#45475a88',
+      'scrollbarSlider.hoverBackground': '#585b70aa',
+      'minimap.background': '#181825',
+      'editorWidget.background': '#1e1e2e',
+      'editorWidget.border': '#45475a',
+      'editorSuggestWidget.background': '#1e1e2e',
+      'editorSuggestWidget.border': '#45475a',
+      'editorSuggestWidget.selectedBackground': '#313244',
+    },
+  });  // Completion provider
   monaco.languages.registerCompletionItemProvider('ada', {
     provideCompletionItems: (model, position) => {
       const word = model.getWordUntilPosition(position);

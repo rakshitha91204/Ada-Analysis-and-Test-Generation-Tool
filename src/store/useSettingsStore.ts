@@ -10,7 +10,7 @@ interface SettingsStore {
   fontSize: number;
   minimapEnabled: boolean;
   splitEditor: boolean;
-  theme: 'ada-dark' | 'ada-soft';
+  theme: 'ada-dark' | 'ada-soft' | 'ada-purple';
   setEnableTestGen: (v: boolean) => void;
   setEnableStaticAnalysis: (v: boolean) => void;
   setRightPanelWidth: (w: number) => void;
@@ -19,7 +19,7 @@ interface SettingsStore {
   setFontSize: (s: number) => void;
   setMinimapEnabled: (v: boolean) => void;
   setSplitEditor: (v: boolean) => void;
-  setTheme: (t: 'ada-dark' | 'ada-soft') => void;
+  setTheme: (t: 'ada-dark' | 'ada-soft' | 'ada-purple') => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -33,7 +33,7 @@ export const useSettingsStore = create<SettingsStore>()(
       fontSize: 14,
       minimapEnabled: true,
       splitEditor: false,
-      theme: 'ada-dark',
+      theme: 'ada-purple',
 
       setEnableTestGen: (v) => set({ enableTestGen: v }),
       setEnableStaticAnalysis: (v) => set({ enableStaticAnalysis: v }),

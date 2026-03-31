@@ -77,18 +77,23 @@ export const SettingsToggle: React.FC = () => {
           {/* Theme */}
           <div>
             <p className="text-zinc-200 text-sm font-medium mb-2">Editor Theme</p>
-            <div className="flex gap-2">
-              {(['ada-dark', 'ada-soft'] as const).map((t) => (
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { id: 'ada-purple', label: 'Purple', dot: '#c586c0' },
+                { id: 'ada-dark',   label: 'Amber',  dot: '#f59e0b' },
+                { id: 'ada-soft',   label: 'Soft',   dot: '#fbbf24' },
+              ] as const).map((t) => (
                 <button
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-                    theme === t
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+                    theme === t.id
+                      ? 'bg-zinc-700 text-zinc-100 border border-zinc-500'
                       : 'bg-zinc-800 text-zinc-500 border border-zinc-700 hover:border-zinc-600'
                   }`}
                 >
-                  {t === 'ada-dark' ? 'Dark' : 'Soft Dark'}
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: t.dot }} />
+                  {t.label}
                 </button>
               ))}
             </div>
