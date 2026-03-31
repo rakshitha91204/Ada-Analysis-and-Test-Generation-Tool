@@ -1,16 +1,19 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { Package, ChevronDown, ChevronRight, Link, Zap, FunctionSquare } from 'lucide-react';
 import { useFileStore } from '../../store/useFileStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useEditorStore } from '../../store/useEditorStore';
 import { analyzeAdaFile, findLinkedFile } from '../../utils/adaParser';
 import { showToast } from '../shared/Toast';
+import { ContextMenu } from '../subprogram/ContextMenu';
+import { useContextMenu } from '../../hooks/useContextMenu';
 
 export const PackageHierarchy: React.FC = () => {
   const { files, setActiveFile } = useFileStore();
   const { subprograms, selectSubprogram } = useSubprogramStore();
   const { openTab, setActiveTab, navigateTo } = useEditorStore();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const { menu, open, close } = useContextMenu();
 
   const hierarchy = useMemo(() => {
     return files.map((file) => {
@@ -40,6 +43,15 @@ export const PackageHierarchy: React.FC = () => {
     showToast('Jumped to linked file', 'info');
   };
 
+  const handleSubRightClick = useCallback(
+    (e: React.MouseEvent, subId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      open(e, subId);
+    },
+    [open]
+  );
+
   if (files.length === 0) return null;
 
   return (
@@ -68,14 +80,13 @@ export const PackageHierarchy: React.FC = () => {
               }
               <Package size={11} className="text-amber-500/70 flex-shrink-0" />
               <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{pkgName}</span>
-              <span className={`text-[9px] font-mono px-1 rounded ${
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
                 file.type === 'spec'
                   ? 'bg-amber-500/15 text-amber-400'
                   : 'bg-orange-500/15 text-orange-400'
               }`}>
                 {file.type === 'spec' ? 'spec' : 'body'}
               </span>
-              {/* Spec/body link button */}
               {linkedId && (
                 <button
                   onClick={(e) => { e.stopPropagation(); jumpToLinked(linkedId); }}
@@ -146,7 +157,7 @@ export const PackageHierarchy: React.FC = () => {
                   </div>
                 )}
 
-                {/* Subprograms */}
+                {/* Subprograms — right-click for context menu */}
                 {fileSubs.length > 0 && (
                   <div className="px-3 py-1">
                     <p className="text-[9px] font-mono text-zinc-700 uppercase tracking-widest mb-1">
@@ -155,18 +166,29 @@ export const PackageHierarchy: React.FC = () => {
                     {fileSubs.map((sub) => (
                       <div
                         key={sub.id}
-                        className="flex items-center gap-2 py-1 cursor-pointer hover:bg-zinc-800/30 rounded px-1 transition-colors group"
+                        className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-zinc-800/40 rounded px-1.5 transition-colors group select-none"
                         onClick={() => {
                           selectSubprogram(sub.id);
                           openFile(file.id, sub.startLine);
                         }}
+                        onContextMenu={(e) => {
+                          selectSubprogram(sub.id);
+                          handleSubRightClick(e, sub.id);
+                        }}
+                        title="Right-click for actions"
                       >
                         {sub.kind === 'procedure'
-                          ? <Zap size={10} className="text-amber-500/70 flex-shrink-0" />
-                          : <FunctionSquare size={10} className="text-orange-500/70 flex-shrink-0" />
+                          ? <Zap size={11} className="text-amber-500/70 flex-shrink-0" />
+                          : <FunctionSquare size={11} className="text-orange-500/70 flex-shrink-0" />
                         }
                         <span className="text-[10px] font-mono text-zinc-300 flex-1 truncate">{sub.name}</span>
-                        <span className="text-[9px] font-mono text-zinc-700 group-hover:text-zinc-500">L{sub.startLine}</span>
+                        {/* Right-click hint — visible on hover */}
+                        <span className="text-[8px] font-mono text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity mr-1">
+                          right-click
+                        </span>
+                        <span className="text-[9px] font-mono text-zinc-700 group-hover:text-zinc-500 flex-shrink-0">
+                          L{sub.startLine}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -176,6 +198,16 @@ export const PackageHierarchy: React.FC = () => {
           </div>
         );
       })}
+
+      {/* Context menu portal */}
+      {menu.visible && menu.targetId && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          subprogramId={menu.targetId}
+          onClose={close}
+        />
+      )}
     </div>
   );
 };
