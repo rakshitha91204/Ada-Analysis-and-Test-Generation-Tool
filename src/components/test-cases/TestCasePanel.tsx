@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Download, Play, ChevronDown, BarChart2 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
@@ -22,10 +22,13 @@ const SkeletonCard: React.FC = () => (
 
 export const TestCasePanel: React.FC = () => {
   const { subprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
-  const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory } = useTestCaseStore();
+  const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory, setCurrentTests } = useTestCaseStore();
   const { generating, generateForSelected, generateForAll } = useTestGenerator();
   const [exportOpen, setExportOpen] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const dragFrom = useRef<number | null>(null);
+  const dragTo = useRef<number | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
   const selectedSub = subprograms.find((s) => s.id === selectedSubprogramId);
   const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId] || []) : [];
@@ -45,6 +48,22 @@ export const TestCasePanel: React.FC = () => {
       timestamp: new Date().toISOString(),
       testCases: tests,
     });
+  };
+
+  const handleDragStart = (idx: number) => {
+    dragFrom.current = idx;
+    setDraggingIdx(idx);
+  };
+  const handleDragOver = (idx: number) => { dragTo.current = idx; };
+  const handleDrop = () => {
+    if (dragFrom.current === null || dragTo.current === null || !selectedSubprogramId) return;
+    const reordered = [...tests];
+    const [moved] = reordered.splice(dragFrom.current, 1);
+    reordered.splice(dragTo.current, 0, moved);
+    setCurrentTests(selectedSubprogramId, reordered);
+    dragFrom.current = null;
+    dragTo.current = null;
+    setDraggingIdx(null);
   };
 
   return (
@@ -158,7 +177,16 @@ export const TestCasePanel: React.FC = () => {
             />
           ) : (
             tests.map((tc, i) => (
-              <TestCaseCard key={tc.id} testCase={tc} index={i} subprogramId={selectedSubprogramId} />
+              <TestCaseCard
+                key={tc.id}
+                testCase={tc}
+                index={i}
+                subprogramId={selectedSubprogramId}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                isDragging={draggingIdx === i}
+              />
             ))
           )}
         </div>

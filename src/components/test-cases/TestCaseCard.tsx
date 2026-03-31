@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Edit2, Copy, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, Edit2, Copy, X, ChevronDown, ChevronRight, GripVertical, MessageSquare } from 'lucide-react';
 import { TestCase } from '../../types/testcase.types';
 import { Badge } from '../shared/Badge';
 import { TestCaseEditor } from './TestCaseEditor';
@@ -11,6 +11,10 @@ interface TestCaseCardProps {
   testCase: TestCase;
   index: number;
   subprogramId: string;
+  onDragStart?: (index: number) => void;
+  onDragOver?: (index: number) => void;
+  onDrop?: () => void;
+  isDragging?: boolean;
 }
 
 const typeVariant = { normal: 'success', edge: 'primary', invalid: 'danger' } as const;
@@ -21,9 +25,14 @@ const statusIcon = {
   fail: <span className="text-red-400 text-xs">✗</span>,
 };
 
-export const TestCaseCard: React.FC<TestCaseCardProps> = ({ testCase, index, subprogramId }) => {
+export const TestCaseCard: React.FC<TestCaseCardProps> = ({
+  testCase, index, subprogramId,
+  onDragStart, onDragOver, onDrop, isDragging,
+}) => {
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showNote, setShowNote] = useState(false);
+  const [note, setNote] = useState(testCase.coverageHint ?? '');
   const { updateTestCase, currentTestSets, setCurrentTests } = useTestCaseStore();
   const { subprograms } = useSubprogramStore();
   const { setHighlight, setActiveTab } = useEditorStore();
@@ -58,12 +67,23 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({ testCase, index, sub
   return (
     <>
       <div
-        className="rounded-lg border transition-all cursor-pointer hover:border-zinc-600"
+        className={`rounded-lg border transition-all cursor-pointer hover:border-zinc-600 ${isDragging ? 'opacity-40 scale-95' : ''}`}
         style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)' }}
         onClick={handleCardClick}
+        draggable
+        onDragStart={() => onDragStart?.(index)}
+        onDragOver={(e) => { e.preventDefault(); onDragOver?.(index); }}
+        onDrop={(e) => { e.preventDefault(); onDrop?.(); }}
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2">
+          {/* Drag handle */}
+          <span
+            className="text-zinc-700 hover:text-zinc-400 cursor-grab active:cursor-grabbing flex-shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={12} />
+          </span>
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
             className="text-zinc-600 hover:text-zinc-400 transition-colors"
@@ -134,12 +154,32 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({ testCase, index, sub
             <Copy size={9} /> Clone
           </button>
           <button
+            onClick={() => setShowNote((v) => !v)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${showNote ? 'text-purple-400 bg-purple-500/10' : 'text-zinc-500 hover:text-purple-400 hover:bg-purple-500/10'}`}
+          >
+            <MessageSquare size={9} /> Note
+          </button>
+          <button
             onClick={handleRemove}
             className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors ml-auto"
           >
             <X size={9} /> Remove
           </button>
         </div>
+
+        {/* Inline note editor */}
+        {showNote && (
+          <div className="px-3 pb-2 border-t" style={{ borderColor: 'var(--border-default)' }} onClick={(e) => e.stopPropagation()}>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onBlur={() => updateTestCase(subprogramId, testCase.id, { coverageHint: note })}
+              placeholder="Add a note or coverage hint..."
+              rows={2}
+              className="w-full mt-2 px-2 py-1.5 text-[10px] font-mono rounded bg-zinc-800 border border-zinc-700 text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-purple-500/50 resize-none transition-colors"
+            />
+          </div>
+        )}
       </div>
 
       {editing && (

@@ -4,7 +4,6 @@ import { useEditorStore } from '../../store/useEditorStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-
 const MonacoEditor = React.lazy(() =>
   import('@monaco-editor/react').then((m) => ({ default: m.default }))
 );
@@ -231,6 +230,40 @@ export const CodeEditor: React.FC = () => {
 
     decorationsRef.current = editor.deltaDecorations([], decs);
   }, [selectedSubprogramId, subprograms, activeFileId, currentTestSets]);
+
+  // ── Diagnostic markers (error squiggles) ─────────────────────────────────
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Import diagnostics dynamically to avoid circular deps
+    import('../../mocks/mockDiagnostics').then(({ mockDiagnostics }) => {
+      const { files } = useFileStore.getState();
+      const activeFile = files.find((f) => f.id === activeFileId);
+      if (!activeFile) return;
+
+      const markers = mockDiagnostics
+        .filter((d) => d.file === activeFile.name)
+        .map((d) => ({
+          severity: d.severity === 'error'
+            ? monaco.MarkerSeverity.Error
+            : d.severity === 'warning'
+            ? monaco.MarkerSeverity.Warning
+            : monaco.MarkerSeverity.Info,
+          message: d.message,
+          startLineNumber: d.line,
+          startColumn: d.column,
+          endLineNumber: d.line,
+          endColumn: d.column + 20,
+          source: 'Ada Analysis',
+        }));
+
+      monaco.editor.setModelMarkers(model, 'ada-diagnostics', markers);
+    });
+  }, [activeFileId]);
 
   // ── Legacy highlightRange support ────────────────────────────────────────
   useEffect(() => {

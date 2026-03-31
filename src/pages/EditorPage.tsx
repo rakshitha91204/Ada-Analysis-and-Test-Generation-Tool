@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Diamond, Play, Download, Settings, ArrowLeft, ChevronDown, ChevronUp,
-  Columns2, Map, ZoomIn, ZoomOut, Keyboard, Search,
+  Columns2, Map, ZoomIn, ZoomOut, Keyboard, Search, FileText,
 } from 'lucide-react';
 import { EditorLayout } from '../components/editor/EditorLayout';
 import { RightPanel } from '../components/panels/RightPanel';
@@ -13,6 +13,7 @@ import { IconButton } from '../components/shared/IconButton';
 import { Tooltip } from '../components/shared/Tooltip';
 import { CommandPalette } from '../components/shared/CommandPalette';
 import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsModal';
+import { OnboardingTour } from '../components/shared/OnboardingTour';
 import { useFileStore } from '../store/useFileStore';
 import { useSubprogramStore } from '../store/useSubprogramStore';
 import { useTestCaseStore } from '../store/useTestCaseStore';
@@ -21,15 +22,18 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useFileParser } from '../hooks/useFileParser';
+import { loadSession } from '../utils/sessionStorage';
+import { downloadHTMLReport, downloadProjectJSON } from '../utils/reportExport';
 import { mockFiles } from '../mocks/mockFiles';
 import { mockSubprograms } from '../mocks/mockSubprograms';
 import { mockTestCaseSets, mockCurrentTestSets } from '../mocks/mockTestCases';
+import { mockDiagnostics } from '../mocks/mockDiagnostics';
 
 const EditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { files, addFiles, setActiveFile } = useFileStore();
-  const { setSubprograms, selectSubprogram } = useSubprogramStore();
-  const { setHistory, setCurrentTests } = useTestCaseStore();
+  const { files, addFiles, setActiveFile, loadFromSession, folders } = useFileStore();
+  const { subprograms, setSubprograms, selectSubprogram } = useSubprogramStore();
+  const { setHistory, setCurrentTests, history, currentTestSets } = useTestCaseStore();
   const { rightPanelCollapsed, bottomPanelCollapsed, toggleRightPanel, toggleBottomPanel, openTab } = useEditorStore();
   const {
     rightPanelWidth, bottomPanelHeight, setRightPanelWidth, setBottomPanelHeight,
@@ -38,13 +42,18 @@ const EditorPage: React.FC = () => {
 
   const [cmdOpen, setCmdOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const rightPanel = useResizablePanel(rightPanelWidth, 'horizontal', setRightPanelWidth, 180, 600);
   const bottomPanel = useResizablePanel(bottomPanelHeight, 'vertical', setBottomPanelHeight, 100, 500);
 
-  // Initialize with mock data on first load
+  // Initialize: try session restore first, fall back to mock data
   useEffect(() => {
-    if (files.length === 0) {
+    const session = loadSession();
+    if (session && session.files.length > 0) {
+      loadFromSession(session.files, session.folders, session.activeFileId);
+      if (session.activeFileId) setActiveFile(session.activeFileId);
+    } else if (files.length === 0) {
       addFiles(mockFiles);
       setActiveFile('file_calculator_adb');
     }
@@ -69,6 +78,25 @@ const EditorPage: React.FC = () => {
     window.addEventListener('ada:shortcuts', h);
     return () => window.removeEventListener('ada:shortcuts', h);
   }, []);
+
+  const handleExportReport = () => {
+    downloadHTMLReport({
+      files,
+      subprograms,
+      testSets: history,
+      diagnostics: mockDiagnostics,
+      generatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleExportProject = () => {
+    downloadProjectJSON({
+      files,
+      subprograms,
+      testSets: history,
+      generatedAt: new Date().toISOString(),
+    });
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
@@ -134,6 +162,32 @@ const EditorPage: React.FC = () => {
           <Tooltip content="Run Tests (Ctrl+Enter)">
             <IconButton icon={<Play size={14} />} label="Run Tests" className="text-green-400 hover:bg-green-500/10" />
           </Tooltip>
+
+          {/* Export report */}
+          <div className="relative">
+            <Tooltip content="Export Report / Project">
+              <IconButton icon={<FileText size={14} />} label="Export" onClick={() => setReportOpen((v) => !v)} />
+            </Tooltip>
+            {reportOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-xl overflow-hidden"
+                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)', minWidth: 200 }}
+              >
+                {[
+                  { label: '📄 Export HTML Report', action: handleExportReport },
+                  { label: '💾 Export Project (.json)', action: handleExportProject },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => { item.action(); setReportOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-mono text-zinc-300 hover:bg-zinc-700/50 transition-colors"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Keyboard shortcuts */}
           <Tooltip content="Keyboard Shortcuts (?)">
@@ -210,6 +264,7 @@ const EditorPage: React.FC = () => {
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <OnboardingTour />
     </div>
   );
 };

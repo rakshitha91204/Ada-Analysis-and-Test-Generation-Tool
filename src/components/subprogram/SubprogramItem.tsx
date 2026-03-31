@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, FunctionSquare, TestTube, ChevronRight, ChevronDown, Clock } from 'lucide-react';
+import { Zap, FunctionSquare, TestTube, ChevronRight, ChevronDown, Clock, Pin, PinOff } from 'lucide-react';
 import { Subprogram } from '../../types/subprogram.types';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useEditorStore } from '../../store/useEditorStore';
@@ -29,6 +29,7 @@ export const SubprogramItem: React.FC<SubprogramItemProps> = ({
   searchQuery = '',
 }) => {
   const { selectedSubprogramId, selectSubprogram } = useSubprogramStore();
+  const { togglePin } = useSubprogramStore();
   const { setActiveTab, openTab, navigateTo } = useEditorStore();
   const { currentTestSets, setCurrentTests } = useTestCaseStore();
   const { setActiveFile } = useFileStore();
@@ -127,6 +128,15 @@ export const SubprogramItem: React.FC<SubprogramItemProps> = ({
         {isCursorInside && !isSelected && (
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" title="Cursor is here" />
         )}
+
+        {/* Pin button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); togglePin(subprogram.id); }}
+          title={subprogram.pinned ? 'Unpin' : 'Pin to top'}
+          className={`flex-shrink-0 transition-colors ${subprogram.pinned ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-400 opacity-0 group-hover:opacity-100'}`}
+        >
+          {subprogram.pinned ? <PinOff size={10} /> : <Pin size={10} />}
+        </button>
 
         {/* Line count */}
         <span className={`text-[9px] font-mono flex-shrink-0 ${complexityColor(lineCount)}`}>

@@ -8,6 +8,7 @@ interface SubprogramStore {
   addSubprograms: (subprograms: Subprogram[]) => void;
   selectSubprogram: (id: string | null) => void;
   updateTestCount: (id: string, count: number) => void;
+  togglePin: (id: string) => void;
 }
 
 export const useSubprogramStore = create<SubprogramStore>((set) => ({
@@ -34,6 +35,13 @@ export const useSubprogramStore = create<SubprogramStore>((set) => ({
         s.id === id
           ? { ...s, testCount: count, lastGeneratedAt: new Date().toISOString() }
           : s
+      ),
+    })),
+
+  togglePin: (id) =>
+    set((state) => ({
+      subprograms: state.subprograms.map((s) =>
+        s.id === id ? { ...s, pinned: !s.pinned } : s
       ),
     })),
 }));

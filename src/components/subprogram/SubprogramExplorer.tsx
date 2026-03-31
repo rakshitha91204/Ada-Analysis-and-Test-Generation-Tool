@@ -159,6 +159,27 @@ export const SubprogramExplorer: React.FC = () => {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
+          {/* Pinned subprograms */}
+          {subprograms.filter((s) => s.pinned).length > 0 && (
+            <div>
+              <button
+                onClick={() => toggleGroup('__pinned__')}
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800/30 transition-colors"
+              >
+                {collapsedGroups.has('__pinned__')
+                  ? <ChevronRight size={10} className="text-zinc-600" />
+                  : <ChevronDown size={10} className="text-zinc-600" />
+                }
+                <span className="text-[9px] font-mono text-amber-500/70 uppercase tracking-widest flex-1 text-left">
+                  📌 Pinned
+                </span>
+              </button>
+              {!collapsedGroups.has('__pinned__') && subprograms.filter((s) => s.pinned).map((s) => (
+                <SubprogramItem key={`pin_${s.id}`} subprogram={s} onContextMenu={handleContextMenu} currentLine={currentLine} searchQuery={search} />
+              ))}
+            </div>
+          )}
+
           {groups.map((group) => {
             const isCollapsed = collapsedGroups.has(group.key);
             return (

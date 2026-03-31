@@ -17,4 +17,6 @@ export interface Subprogram {
   endLine: number;
   testCount: number;
   lastGeneratedAt?: string;
+  docComment?: string;
+  pinned?: boolean;
 }
