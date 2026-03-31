@@ -23,6 +23,16 @@ const SubRow: React.FC<{
   const { setActiveFile } = useFileStore();
   const { currentTestSets, setCurrentTests } = useTestCaseStore();
   const { enableTestGen } = useSettingsStore();
+  const [copied, setCopied] = React.useState(false);
+
+  const tests = currentTestSets[sub.id] || [];
+  const testCount = tests.length;
+  const passCount = tests.filter((t) => t.runStatus === 'pass').length;
+  const failCount = tests.filter((t) => t.runStatus === 'fail').length;
+  const lineCount = sub.endLine - sub.startLine + 1;
+  // Simple complexity: 1-3 green, 4-8 amber, 9+ red
+  const complexity = lineCount <= 15 ? 'low' : lineCount <= 40 ? 'med' : 'high';
+  const complexityColor = { low: '#4ade80', med: '#facc15', high: '#f87171' }[complexity];
 
   const handleClick = () => {
     selectSubprogram(sub.id);
@@ -33,6 +43,17 @@ const SubRow: React.FC<{
     if (enableTestGen && !currentTestSets[sub.id]?.length) {
       setCurrentTests(sub.id, generateTestCases(sub));
     }
+  };
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const params = sub.parameters.map((p) => `${p.name} : ${p.mode} ${p.paramType}`).join('; ');
+    const sig = sub.kind === 'function'
+      ? `function ${sub.name} (${params}) return ${sub.returnType}`
+      : `procedure ${sub.name}${params ? ` (${params})` : ''}`;
+    navigator.clipboard.writeText(sig);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   // Highlight matching text in name
@@ -67,10 +88,11 @@ const SubRow: React.FC<{
         if (!isActive) (e.currentTarget as HTMLDivElement).style.background = isCursor ? 'rgba(250,204,21,0.05)' : 'transparent';
       }}
     >
-      {/* Kind indicator dot */}
+      {/* Complexity dot */}
       <span
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ background: sub.kind === 'procedure' ? '#facc15' : '#fb923c' }}
+        style={{ background: complexityColor }}
+        title={`Complexity: ${complexity} (${lineCount} lines)`}
       />
 
       {/* Name */}
@@ -81,9 +103,33 @@ const SubRow: React.FC<{
         {renderName()}
       </span>
 
+      {/* Test count badge */}
+      {testCount > 0 && (
+        <span
+          className="text-[9px] font-mono px-1 rounded flex-shrink-0"
+          style={{
+            background: failCount > 0 ? 'rgba(248,113,113,0.15)' : passCount === testCount ? 'rgba(74,222,128,0.15)' : 'rgba(250,204,21,0.15)',
+            color: failCount > 0 ? '#f87171' : passCount === testCount ? '#4ade80' : '#facc15',
+          }}
+          title={`${testCount} tests · ${passCount} pass · ${failCount} fail`}
+        >
+          🧪{testCount}
+        </span>
+      )}
+
+      {/* Copy button — visible on hover */}
+      <button
+        onClick={handleCopy}
+        className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+        style={{ color: copied ? '#4ade80' : '#52525b' }}
+        title="Copy signature"
+      >
+        {copied ? '✓' : '⎘'}
+      </button>
+
       {/* Line number */}
-      <span className="text-[10px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
-        {sub.startLine}L
+      <span className="text-[10px] font-mono flex-shrink-0" style={{ color: '#3f3f46' }}>
+        {sub.startLine}
       </span>
     </div>
   );
@@ -96,10 +142,12 @@ export const SubprogramExplorer: React.FC = () => {
   const { subprograms, selectedSubprogramId } = useSubprogramStore();
   const { files, activeFileId } = useFileStore();
   const { cursorPosition, activeTab } = useEditorStore();
+  const { currentTestSets, setCurrentTests } = useTestCaseStore();
   const [search, setSearch] = useState('');
   const [activeKind, setActiveKind] = useState<KindTab>('procedures');
   const [procOpen, setProcOpen] = useState(true);
   const [funcOpen, setFuncOpen] = useState(true);
+  const [noTestsOnly, setNoTestsOnly] = useState(false);
   const { menu, open, close } = useContextMenu();
   const searchRef = React.useRef<HTMLInputElement>(null);
 
@@ -114,12 +162,18 @@ export const SubprogramExplorer: React.FC = () => {
   }, [subprograms, currentLine, activeFileId, activeTab]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return subprograms;
-    const q = search.toLowerCase();
-    return subprograms.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.kind.toLowerCase().includes(q)
-    );
-  }, [subprograms, search]);
+    let list = [...subprograms];
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (s) => s.name.toLowerCase().includes(q) || s.kind.toLowerCase().includes(q)
+      );
+    }
+    if (noTestsOnly) {
+      list = list.filter((s) => !(currentTestSets[s.id]?.length > 0));
+    }
+    return list;
+  }, [subprograms, search, noTestsOnly, currentTestSets]);
 
   const procedures = useMemo(() => filtered.filter((s) => s.kind === 'procedure'), [filtered]);
   const functions = useMemo(() => filtered.filter((s) => s.kind === 'function'), [filtered]);
@@ -140,12 +194,44 @@ export const SubprogramExplorer: React.FC = () => {
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest" style={{ color: '#facc15' }}>
           Subprograms
         </span>
-        <span
-          className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-          style={{ background: '#1c1c1c', color: '#71717a' }}
-        >
-          {subprograms.length}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* No-tests filter */}
+          <button
+            onClick={() => setNoTestsOnly((v) => !v)}
+            className="text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors"
+            style={{
+              background: noTestsOnly ? 'rgba(250,204,21,0.15)' : '#1c1c1c',
+              color: noTestsOnly ? '#facc15' : '#52525b',
+              border: `1px solid ${noTestsOnly ? '#facc15' : '#2a2a2a'}`,
+            }}
+            title="Show only subprograms with no tests"
+          >
+            no tests
+          </button>
+          {/* Generate all */}
+          <button
+            onClick={() => {
+              subprograms.forEach((s) => {
+                if (!currentTestSets[s.id]?.length) {
+                  setCurrentTests(s.id, generateTestCases(s));
+                }
+              });
+            }}
+            className="text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors"
+            style={{ background: '#1c1c1c', color: '#52525b', border: '1px solid #2a2a2a' }}
+            title="Generate tests for all subprograms"
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#facc15'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#52525b'; }}
+          >
+            gen all
+          </button>
+          <span
+            className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+            style={{ background: '#1c1c1c', color: '#71717a' }}
+          >
+            {subprograms.length}
+          </span>
+        </div>
       </div>
 
       {/* ── Search ── */}

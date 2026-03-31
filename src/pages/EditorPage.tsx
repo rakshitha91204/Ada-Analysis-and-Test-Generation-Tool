@@ -17,6 +17,7 @@ import { OnboardingTour } from '../components/shared/OnboardingTour';
 import { useFileStore } from '../store/useFileStore';
 import { useSubprogramStore } from '../store/useSubprogramStore';
 import { useTestCaseStore } from '../store/useTestCaseStore';
+import { showToast } from '../components/shared/Toast';
 import { useEditorStore } from '../store/useEditorStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
@@ -186,6 +187,22 @@ const EditorPage: React.FC = () => {
           {/* Run tests */}
           <Tooltip content="Run Tests (Ctrl+Enter)">
             <IconButton icon={<Play size={14} />} label="Run Tests" className="text-green-400 hover:bg-green-500/10" />
+          </Tooltip>
+
+          {/* Generate all tests */}
+          <Tooltip content="Generate tests for all subprograms">
+            <IconButton
+              icon={<span className="text-[11px]">🧪</span>}
+              label="Generate All Tests"
+              onClick={() => {
+                subprograms.forEach((s) => {
+                  if (!useTestCaseStore.getState().currentTestSets[s.id]?.length) {
+                    useTestCaseStore.getState().generateTests(s);
+                  }
+                });
+                showToast(`Generating tests for ${subprograms.length} subprograms`, 'success');
+              }}
+            />
           </Tooltip>
 
           {/* Export report */}

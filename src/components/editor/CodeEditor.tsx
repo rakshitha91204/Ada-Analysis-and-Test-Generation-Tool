@@ -162,6 +162,55 @@ export const CodeEditor: React.FC = () => {
         monaco.editor.setTheme(useSettingsStore.getState().theme);
         const model = editor.getModel();
         if (model) monaco.editor.setModelLanguage(model, 'ada');
+
+        // ── Hover provider: show subprogram signature on hover ──────────────
+        monaco.languages.registerHoverProvider('ada', {
+          provideHover: (hoverModel, position) => {
+            const word = hoverModel.getWordAtPosition(position);
+            if (!word) return null;
+            const { subprograms } = useSubprogramStore.getState();
+            const sub = subprograms.find(
+              (s) => s.name.toLowerCase() === word.word.toLowerCase()
+            );
+            if (!sub) return null;
+            const params = sub.parameters.map((p) => `${p.name} : ${p.mode} ${p.paramType}`).join('; ');
+            const sig = sub.kind === 'function'
+              ? `function **${sub.name}** (${params}) return ${sub.returnType}`
+              : `procedure **${sub.name}**${params ? ` (${params})` : ''}`;
+            const { currentTestSets } = useTestCaseStore.getState();
+            const tests = currentTestSets[sub.id] || [];
+            return {
+              contents: [
+                { value: `\`\`\`ada\n${sig}\n\`\`\`` },
+                { value: `Lines ${sub.startLine}–${sub.endLine} · ${tests.length} test case${tests.length !== 1 ? 's' : ''}` },
+              ],
+            };
+          },
+        });
+
+        // ── Definition provider: Ctrl+click jumps to subprogram ─────────────
+        monaco.languages.registerDefinitionProvider('ada', {
+          provideDefinition: (defModel, position) => {
+            const word = defModel.getWordAtPosition(position);
+            if (!word) return null;
+            const { subprograms } = useSubprogramStore.getState();
+            const sub = subprograms.find(
+              (s) => s.name.toLowerCase() === word.word.toLowerCase()
+            );
+            if (!sub) return null;
+            const { files } = useFileStore.getState();
+            const file = files.find((f) => f.id === sub.fileId);
+            if (!file) return null;
+            // Navigate to the subprogram
+            const { navigateTo: nav, setActiveTab, openTab } = useEditorStore.getState();
+            const { setActiveFile } = useFileStore.getState();
+            setActiveFile(sub.fileId);
+            openTab(sub.fileId);
+            setActiveTab('code');
+            setTimeout(() => nav(sub.startLine, sub.fileId, sub.id), 200);
+            return null; // We handle navigation ourselves
+          },
+        });
       });
 
       editor.onDidChangeCursorPosition((e) => {

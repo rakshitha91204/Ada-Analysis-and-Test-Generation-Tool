@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useFileStore } from '../../store/useFileStore';
 import { generateTestCases } from '../../utils/testCaseGenerator';
 import { showToast } from '../shared/Toast';
+import { ParametersModal } from './ParametersModal';
 
 interface ContextMenuProps {
   x: number;
@@ -16,19 +17,19 @@ interface ContextMenuProps {
 export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, onClose }) => {
   const { setActiveTab, navigateTo, openTab } = useEditorStore();
   const { subprograms, selectSubprogram } = useSubprogramStore();
-  const { setCurrentTests } = useTestCaseStore();
+  const { setCurrentTests, currentTestSets } = useTestCaseStore();
   const { setActiveFile } = useFileStore();
   const menuRef = useRef<HTMLDivElement>(null);
+  const [showParams, setShowParams] = useState(false);
 
   const sub = subprograms.find((s) => s.id === subprogramId);
+  const existingTests = sub ? (currentTestSets[sub.id] || []) : [];
 
-  // Menu dimensions for viewport clamping
   const MENU_W = 260;
-  const MENU_H = 280;
+  const MENU_H = 320;
   const left = x + MENU_W > window.innerWidth ? x - MENU_W : x;
   const top  = y + MENU_H > window.innerHeight ? y - MENU_H : y;
 
-  // Close on Escape or outside click
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -42,6 +43,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
   const items = [
     {
       label: 'Generate Test Case',
+      sublabel: existingTests.length > 0 ? `Regenerate (${existingTests.length} exist)` : 'Auto-generate tests',
       action: () => {
         const tests = generateTestCases(sub);
         setCurrentTests(subprogramId, tests);
@@ -52,6 +54,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
     },
     {
       label: 'View Variables',
+      sublabel: 'Static analysis output',
       action: () => {
         selectSubprogram(subprogramId);
         setActiveTab('analysis');
@@ -59,22 +62,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
     },
     {
       label: 'Show Parameters',
+      sublabel: sub.parameters.length === 0 ? 'No parameters' : `${sub.parameters.length} parameter${sub.parameters.length !== 1 ? 's' : ''}`,
       action: () => {
-        selectSubprogram(subprogramId);
-        setActiveFile(sub.fileId);
-        openTab(sub.fileId);
-        setActiveTab('code');
-        setTimeout(() => navigateTo(sub.startLine, sub.fileId, sub.id), 80);
-        showToast(
-          sub.parameters.length === 0
-            ? `${sub.name} has no parameters`
-            : `${sub.name}(${sub.parameters.map((p) => `${p.name}: ${p.paramType}`).join(', ')})`,
-          'info'
-        );
+        setShowParams(true);
+        // Don't close the menu — modal will handle close
       },
+      keepOpen: true,
     },
     {
       label: 'Coverage Report',
+      sublabel: existingTests.length > 0
+        ? `${existingTests.filter((t) => t.runStatus === 'pass').length}/${existingTests.length} passing`
+        : 'No tests yet',
       action: () => {
         selectSubprogram(subprogramId);
         setActiveTab('analysis');
@@ -82,6 +81,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
     },
     {
       label: 'Call Graph',
+      sublabel: 'Visualize call relationships',
       action: () => {
         selectSubprogram(subprogramId);
         setActiveTab('graph');
@@ -89,6 +89,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
     },
     {
       label: 'Dead Code Analysis',
+      sublabel: 'Find unreachable branches',
       action: () => {
         selectSubprogram(subprogramId);
         setActiveTab('analysis');
@@ -120,13 +121,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Subprogram label at top */}
-        <div
-          className="px-4 py-2.5"
-          style={{ borderBottom: '1px solid #1e1e1e', background: '#0d0d0d' }}
-        >
+        {/* Header */}
+        <div className="px-4 py-2.5" style={{ borderBottom: '1px solid #1e1e1e', background: '#0d0d0d' }}>
           <p className="text-[10px] font-mono uppercase tracking-widest" style={{ color: '#52525b' }}>
-            {sub.kind}
+            {sub.kind} · L{sub.startLine}
           </p>
           <p className="text-sm font-mono font-semibold mt-0.5 truncate" style={{ color: '#facc15' }}>
             {sub.name}
@@ -135,26 +133,46 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, subprogramId, on
 
         {/* Items */}
         <div className="py-1">
-          {items.map((item, i) => (
+          {items.map((item) => (
             <button
               key={item.label}
-              onClick={() => run(item.action)}
-              className="w-full text-left px-4 py-3 text-sm font-medium transition-colors"
-              style={{ color: '#d4d4d8', background: 'transparent' }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a';
-                (e.currentTarget as HTMLButtonElement).style.color = '#facc15';
+              onClick={() => {
+                if (item.keepOpen) { item.action(); }
+                else { run(item.action); }
               }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                (e.currentTarget as HTMLButtonElement).style.color = '#d4d4d8';
-              }}
+              className="w-full text-left px-4 py-2.5 transition-colors group"
+              style={{ background: 'transparent' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
             >
-              {item.label}
+              <p className="text-sm font-medium transition-colors" style={{ color: '#d4d4d8' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLParagraphElement).style.color = '#facc15'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLParagraphElement).style.color = '#d4d4d8'; }}
+              >
+                {item.label}
+              </p>
+              {item.sublabel && (
+                <p className="text-[10px] font-mono mt-0.5" style={{ color: '#52525b' }}>
+                  {item.sublabel}
+                </p>
+              )}
             </button>
           ))}
         </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2" style={{ borderTop: '1px solid #1e1e1e' }}>
+          <p className="text-[9px] font-mono" style={{ color: '#3f3f46' }}>ESC to close</p>
+        </div>
       </div>
+
+      {/* Parameters modal */}
+      {showParams && (
+        <ParametersModal
+          sub={sub}
+          onClose={() => { setShowParams(false); onClose(); }}
+        />
+      )}
     </>
   );
 };
