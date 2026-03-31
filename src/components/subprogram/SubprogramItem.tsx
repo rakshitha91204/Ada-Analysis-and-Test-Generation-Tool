@@ -12,7 +12,8 @@ import { format } from 'date-fns';
 interface SubprogramItemProps {
   subprogram: Subprogram;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
-  currentLine?: number; // editor cursor line for active highlight
+  currentLine?: number;
+  searchQuery?: string;
 }
 
 const complexityColor = (lines: number) => {
@@ -25,6 +26,7 @@ export const SubprogramItem: React.FC<SubprogramItemProps> = ({
   subprogram,
   onContextMenu,
   currentLine,
+  searchQuery = '',
 }) => {
   const { selectedSubprogramId, selectSubprogram } = useSubprogramStore();
   const { setActiveTab, openTab, navigateTo } = useEditorStore();
@@ -46,16 +48,30 @@ export const SubprogramItem: React.FC<SubprogramItemProps> = ({
     currentLine >= subprogram.startLine &&
     currentLine <= subprogram.endLine;
 
+  // Highlight matching characters in name
+  const highlightName = (name: string, query: string) => {
+    if (!query.trim()) return <span>{name}</span>;
+    const idx = name.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return <span>{name}</span>;
+    return (
+      <>
+        <span>{name.slice(0, idx)}</span>
+        <span className="bg-amber-500/30 text-amber-300 rounded-sm px-0.5">{name.slice(idx, idx + query.length)}</span>
+        <span>{name.slice(idx + query.length)}</span>
+      </>
+    );
+  };
+
   const handleClick = () => {
     // 1. Select subprogram in store
     selectSubprogram(subprogram.id);
     // 2. Open the file tab
     setActiveFile(subprogram.fileId);
     openTab(subprogram.fileId);
-    // 3. Switch to code view
-    setActiveTab('code');
-    // 4. Navigate Monaco to the exact start line
+    // 3. Queue the navigation BEFORE switching tab so it fires after Monaco renders
     navigateTo(subprogram.startLine, subprogram.fileId, subprogram.id);
+    // 4. Switch to code view (Monaco will be visible, nav fires 80ms later)
+    setActiveTab('code');
     // 5. Auto-generate tests if none exist
     if (enableTestGen && !currentTestSets[subprogram.id]?.length) {
       setCurrentTests(subprogram.id, generateTestCases(subprogram));
@@ -104,7 +120,7 @@ export const SubprogramItem: React.FC<SubprogramItemProps> = ({
             isSelected ? 'text-amber-300' : isCursorInside ? 'text-blue-300' : 'text-zinc-200'
           }`}
         >
-          {subprogram.name}
+          {highlightName(subprogram.name, searchQuery)}
         </span>
 
         {/* Cursor-inside indicator */}

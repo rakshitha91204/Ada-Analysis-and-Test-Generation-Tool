@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Layers, FileCode, ChevronDown, ChevronRight, SortAsc, List } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useFileStore } from '../../store/useFileStore';
@@ -11,43 +11,34 @@ import { Badge } from '../shared/Badge';
 import { Tooltip } from '../shared/Tooltip';
 import { useContextMenu } from '../../hooks/useContextMenu';
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = React.useState(value);
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
-
 type GroupMode = 'kind' | 'file' | 'flat';
 type SortMode = 'name' | 'line' | 'tests';
 
 export const SubprogramExplorer: React.FC = () => {
   const { subprograms } = useSubprogramStore();
-  const { files } = useFileStore();
+  const { files, activeFileId } = useFileStore();
   const { cursorPosition, activeTab } = useEditorStore();
   const [search, setSearch] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('kind');
   const [sortMode, setSortMode] = useState<SortMode>('line');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const debouncedSearch = useDebounce(search, 300);
   const { menu, open, close } = useContextMenu();
 
   const currentLine = cursorPosition.line;
 
+  // Instant filter — no debounce so results appear immediately
   const filtered = useMemo(() => {
     let list = [...subprograms];
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase();
+    if (search.trim()) {
+      const q = search.toLowerCase();
       list = list.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
           s.parameters.some((p) => p.name.toLowerCase().includes(q)) ||
-          s.returnType?.toLowerCase().includes(q)
+          s.returnType?.toLowerCase().includes(q) ||
+          s.kind.toLowerCase().includes(q)
       );
     }
-    // Sort
     list.sort((a, b) => {
       if (sortMode === 'name') return a.name.localeCompare(b.name);
       if (sortMode === 'line') return a.startLine - b.startLine;
@@ -55,7 +46,12 @@ export const SubprogramExplorer: React.FC = () => {
       return 0;
     });
     return list;
-  }, [subprograms, debouncedSearch, sortMode]);
+  }, [subprograms, search, sortMode]);
+
+  // Auto-expand all groups when searching
+  useEffect(() => {
+    if (search.trim()) setCollapsedGroups(new Set());
+  }, [search]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, id: string) => open(e, id),
@@ -69,7 +65,6 @@ export const SubprogramExplorer: React.FC = () => {
       return next;
     });
 
-  // Build grouped structure
   const groups = useMemo(() => {
     if (groupMode === 'flat') {
       return [{ key: 'all', label: `All (${filtered.length})`, items: filtered }];
@@ -78,8 +73,8 @@ export const SubprogramExplorer: React.FC = () => {
       const procs = filtered.filter((s) => s.kind === 'procedure');
       const funcs = filtered.filter((s) => s.kind === 'function');
       return [
-        { key: 'procedure', label: `⚡ Procedures (${procs.length})`, items: procs },
-        { key: 'function', label: `ƒ Functions (${funcs.length})`, items: funcs },
+        { key: 'procedure', label: `⚡ Procedures`, count: procs.length, items: procs },
+        { key: 'function', label: `ƒ Functions`, count: funcs.length, items: funcs },
       ].filter((g) => g.items.length > 0);
     }
     if (groupMode === 'file') {
@@ -91,19 +86,20 @@ export const SubprogramExplorer: React.FC = () => {
       });
       return Array.from(byFile.entries()).map(([fileId, items]) => {
         const file = files.find((f) => f.id === fileId);
-        return { key: fileId, label: file?.name ?? fileId, items };
+        return { key: fileId, label: file?.name ?? fileId, count: items.length, items };
       });
     }
     return [];
   }, [filtered, groupMode, files]);
 
-  // Which subprogram is the cursor currently inside?
-  const { activeFileId } = useFileStore.getState();
+  // Which subprogram contains the cursor right now
   const cursorSubId = useMemo(() => {
     if (activeTab !== 'code') return null;
-    return subprograms.find(
-      (s) => s.fileId === activeFileId && s.startLine <= currentLine && s.endLine >= currentLine
-    )?.id ?? null;
+    return (
+      subprograms.find(
+        (s) => s.fileId === activeFileId && s.startLine <= currentLine && s.endLine >= currentLine
+      )?.id ?? null
+    );
   }, [subprograms, currentLine, activeFileId, activeTab]);
 
   return (
@@ -113,25 +109,20 @@ export const SubprogramExplorer: React.FC = () => {
         <div className="flex items-center gap-2">
           <Layers size={12} className="text-zinc-500" />
           <span className="text-[10px] font-mono font-semibold text-zinc-500 uppercase tracking-wider">
-            Outline
+            Subprograms
           </span>
         </div>
         <div className="flex items-center gap-1">
           <Badge variant="muted">{subprograms.length}</Badge>
-
-          {/* Group mode toggle */}
-          <Tooltip content="Group by: kind / file / flat">
+          <Tooltip content={`Group: ${groupMode} — click to cycle`}>
             <button
               onClick={() => setGroupMode((m) => m === 'kind' ? 'file' : m === 'file' ? 'flat' : 'kind')}
               className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-              title={`Group: ${groupMode}`}
             >
               <List size={11} />
             </button>
           </Tooltip>
-
-          {/* Sort toggle */}
-          <Tooltip content={`Sort: ${sortMode} → click to cycle`}>
+          <Tooltip content={`Sort: ${sortMode} — click to cycle`}>
             <button
               onClick={() => setSortMode((s) => s === 'line' ? 'name' : s === 'name' ? 'tests' : 'line')}
               className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
@@ -142,29 +133,30 @@ export const SubprogramExplorer: React.FC = () => {
         </div>
       </div>
 
-      {/* Sort indicator */}
-      <div className="px-3 pb-1 flex items-center gap-2">
-        <span className="text-[9px] font-mono text-zinc-700">
-          grouped by <span className="text-zinc-500">{groupMode}</span>
-          {' · '}sorted by <span className="text-zinc-500">{sortMode}
-          </span>
-        </span>
-      </div>
-
-      <SubprogramSearch value={search} onChange={setSearch} />
+      {/* Search */}
+      <SubprogramSearch
+        value={search}
+        onChange={setSearch}
+        resultCount={search.trim() ? filtered.length : undefined}
+      />
 
       {subprograms.length === 0 ? (
         <EmptyState
           icon={<Layers size={24} />}
           heading="No subprograms detected"
-          subtext="Upload an Ada file or check diagnostics for parse errors."
+          subtext="Upload an Ada file — subprograms will appear here."
         />
       ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Layers size={24} />}
-          heading="No matches"
-          subtext={`Nothing matches "${debouncedSearch}"`}
-        />
+        <div className="px-3 py-4 text-center">
+          <p className="text-xs font-mono text-zinc-500">No match for</p>
+          <p className="text-xs font-mono text-amber-400 mt-0.5">"{search}"</p>
+          <button
+            onClick={() => setSearch('')}
+            className="mt-2 text-[10px] font-mono text-zinc-600 hover:text-zinc-400 underline transition-colors"
+          >
+            Clear search
+          </button>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
           {groups.map((group) => {
@@ -174,7 +166,7 @@ export const SubprogramExplorer: React.FC = () => {
                 {/* Group header */}
                 <button
                   onClick={() => toggleGroup(group.key)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800/30 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800/30 transition-colors group"
                 >
                   {isCollapsed
                     ? <ChevronRight size={10} className="text-zinc-600" />
@@ -184,15 +176,17 @@ export const SubprogramExplorer: React.FC = () => {
                   <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest flex-1 text-left">
                     {group.label}
                   </span>
+                  <span className="text-[9px] font-mono text-zinc-700">{'count' in group ? group.count : ''}</span>
                 </button>
 
-                {/* Items */}
+                {/* Subprogram rows */}
                 {!isCollapsed && group.items.map((s) => (
                   <SubprogramItem
                     key={s.id}
                     subprogram={s}
                     onContextMenu={handleContextMenu}
                     currentLine={currentLine}
+                    searchQuery={search}
                   />
                 ))}
               </div>
@@ -202,26 +196,22 @@ export const SubprogramExplorer: React.FC = () => {
           {/* Cursor location hint */}
           {cursorSubId && (
             <div
-              className="mx-3 mt-2 mb-1 px-2 py-1.5 rounded border text-[10px] font-mono"
-              style={{ background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }}
+              className="mx-3 mt-2 mb-2 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono flex items-center gap-2"
+              style={{ background: 'rgba(59,130,246,0.07)', borderColor: 'rgba(59,130,246,0.2)' }}
             >
-              <span className="text-zinc-600">Cursor in: </span>
-              <span className="text-blue-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+              <span className="text-zinc-600">Inside:</span>
+              <span className="text-blue-300 font-semibold">
                 {subprograms.find((s) => s.id === cursorSubId)?.name}
               </span>
-              <span className="text-zinc-700"> · L{currentLine}</span>
+              <span className="text-zinc-700 ml-auto">L{currentLine}</span>
             </div>
           )}
         </div>
       )}
 
       {menu.visible && menu.targetId && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          subprogramId={menu.targetId}
-          onClose={close}
-        />
+        <ContextMenu x={menu.x} y={menu.y} subprogramId={menu.targetId} onClose={close} />
       )}
     </div>
   );
