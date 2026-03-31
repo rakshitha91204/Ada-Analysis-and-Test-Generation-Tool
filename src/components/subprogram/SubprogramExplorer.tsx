@@ -25,6 +25,7 @@ export const SubprogramExplorer: React.FC = () => {
   const { menu, open, close } = useContextMenu();
 
   const currentLine = cursorPosition.line;
+  const isParsing = files.some((f) => f.status === 'parsing' || f.status === 'pending');
 
   // Instant filter — no debounce so results appear immediately
   const filtered = useMemo(() => {
@@ -141,11 +142,18 @@ export const SubprogramExplorer: React.FC = () => {
       />
 
       {subprograms.length === 0 ? (
+        isParsing ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-8">
+            <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full spin" />
+            <p className="text-xs font-mono text-zinc-500">Parsing Ada files...</p>
+          </div>
+        ) : (
         <EmptyState
           icon={<Layers size={24} />}
           heading="No subprograms detected"
           subtext="Upload an Ada file — subprograms will appear here."
         />
+        )
       ) : filtered.length === 0 ? (
         <div className="px-3 py-4 text-center">
           <p className="text-xs font-mono text-zinc-500">No match for</p>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Diamond, Play, Download, Settings, ArrowLeft, ChevronDown, ChevronUp,
@@ -31,9 +31,9 @@ import { mockDiagnostics } from '../mocks/mockDiagnostics';
 
 const EditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { files, addFiles, setActiveFile, loadFromSession, folders } = useFileStore();
+  const { files, addFiles, setActiveFile, loadFromSession } = useFileStore();
   const { subprograms, setSubprograms, selectSubprogram } = useSubprogramStore();
-  const { setHistory, setCurrentTests, history, currentTestSets } = useTestCaseStore();
+  const { setHistory, setCurrentTests, history: testHistory } = useTestCaseStore();
   const { rightPanelCollapsed, bottomPanelCollapsed, toggleRightPanel, toggleBottomPanel, openTab } = useEditorStore();
   const {
     rightPanelWidth, bottomPanelHeight, setRightPanelWidth, setBottomPanelHeight,
@@ -50,31 +50,48 @@ const EditorPage: React.FC = () => {
   // Initialize: try session restore first, fall back to mock data
   useEffect(() => {
     const session = loadSession();
-    if (session && session.files.length > 0) {
-      loadFromSession(session.files, session.folders, session.activeFileId);
-      // Open tabs for restored files
-      session.files.forEach((f) => openTab(f.id));
+    const hasRealFiles = session && session.files.length > 0;
+
+    if (hasRealFiles) {
+      // Restore session — files will be parsed by useFileParser (status='pending')
+      // Mark them pending so the parser picks them up
+      const filesWithPending = session.files.map((f) => ({ ...f, status: 'pending' as const }));
+      loadFromSession(filesWithPending, session.folders, session.activeFileId);
+      filesWithPending.forEach((f) => openTab(f.id));
       if (session.activeFileId) setActiveFile(session.activeFileId);
+      // Don't load mock subprograms — useFileParser will populate from real files
     } else if (files.length === 0) {
+      // No real files — load mock demo data
       addFiles(mockFiles);
       mockFiles.forEach((f) => openTab(f.id));
       setActiveFile('file_calculator_adb');
+      setSubprograms(mockSubprograms);
+      selectSubprogram('sub_multiply');
     }
+
+    // Always restore test history
     setHistory(mockTestCaseSets);
     Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
       setCurrentTests(subId, tests);
     });
-    // Only pre-load mock subprograms when using mock files (no real upload)
-    const usingMockFiles = !session || session.files.length === 0;
-    if (usingMockFiles) {
-      setSubprograms(mockSubprograms);
-      selectSubprogram('sub_multiply');
-    }
   }, []); // eslint-disable-line
 
-  // Open tabs whenever new files are added (e.g. from upload page)
+  // When files are added from the upload page (navigating from UploadPage),
+  // open their tabs and clear mock subprograms so parser can populate fresh
+  const prevFilesLen = useRef(0);
   useEffect(() => {
-    files.forEach((f) => openTab(f.id));
+    if (files.length > prevFilesLen.current) {
+      files.forEach((f) => openTab(f.id));
+      // If we now have real uploaded files, clear mock subprograms
+      // so useFileParser can populate with real ones
+      const hasMockOnly = files.every((f) =>
+        f.id === 'file_calculator_ads' || f.id === 'file_calculator_adb'
+      );
+      if (!hasMockOnly && files.length > 0) {
+        setSubprograms([]);
+      }
+    }
+    prevFilesLen.current = files.length;
   }, [files.length]); // eslint-disable-line
 
   useFileParser();
@@ -91,7 +108,7 @@ const EditorPage: React.FC = () => {
     downloadHTMLReport({
       files,
       subprograms,
-      testSets: history,
+      testSets: testHistory,
       diagnostics: mockDiagnostics,
       generatedAt: new Date().toISOString(),
     });
@@ -101,7 +118,7 @@ const EditorPage: React.FC = () => {
     downloadProjectJSON({
       files,
       subprograms,
-      testSets: history,
+      testSets: testHistory,
       generatedAt: new Date().toISOString(),
     });
   };
