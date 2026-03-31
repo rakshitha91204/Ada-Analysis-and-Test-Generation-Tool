@@ -60,12 +60,16 @@ const EditorPage: React.FC = () => {
       mockFiles.forEach((f) => openTab(f.id));
       setActiveFile('file_calculator_adb');
     }
-    setSubprograms(mockSubprograms);
     setHistory(mockTestCaseSets);
     Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
       setCurrentTests(subId, tests);
     });
-    selectSubprogram('sub_multiply');
+    // Only pre-load mock subprograms when using mock files (no real upload)
+    const usingMockFiles = !session || session.files.length === 0;
+    if (usingMockFiles) {
+      setSubprograms(mockSubprograms);
+      selectSubprogram('sub_multiply');
+    }
   }, []); // eslint-disable-line
 
   // Open tabs whenever new files are added (e.g. from upload page)

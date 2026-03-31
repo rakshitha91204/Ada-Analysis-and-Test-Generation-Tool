@@ -54,7 +54,7 @@ export function analyzeAdaFile(content: string, fileId: string): AdaFileAnalysis
 export function parseSubprograms(content: string, fileId: string): Subprogram[] {
   const lines = content.split('\n');
   const subprograms: Subprogram[] = [];
-  const subprogramStartRe = /^\s*(procedure|function)\s+(\w+)\s*(\(|;|return|is)/i;
+  const subprogramStartRe = /^\s*(procedure|function)\s+(\w+)\s*(\(|;|\breturn\b|\bis\b)/i;
   const returnTypeRe = /\breturn\s+([\w.]+)/i;
 
   let i = 0;
@@ -69,13 +69,18 @@ export function parseSubprograms(content: string, fileId: string): Subprogram[] 
       const name = match[2];
       const startLine = i + 1;
 
-      // Collect full signature
+      // Collect full signature (spans until 'is' or ';' terminates it)
       let sigLines = line;
       let j = i;
-      while (j < lines.length && !/(^\s*is\b|;\s*$)/i.test(sigLines)) {
-        j++;
-        if (j < lines.length) sigLines += '\n' + lines[j];
-        if (j - i > 30) break;
+      // Check if 'is' or ';' already on the first line
+      const firstLineTerminated = /\bis\b|\bis\s*$/i.test(line) || /;\s*$/.test(line);
+      if (!firstLineTerminated) {
+        while (j < lines.length) {
+          j++;
+          if (j < lines.length) sigLines += '\n' + lines[j];
+          if (/\bis\b/i.test(lines[j] ?? '') || /;\s*$/.test(lines[j] ?? '')) break;
+          if (j - i > 30) break;
+        }
       }
 
       // Find end line
