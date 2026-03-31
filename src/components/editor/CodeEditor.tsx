@@ -109,7 +109,7 @@ const SingleEditor: React.FC<SingleEditorProps> = ({ fileId, onMount, onCursorCh
 
 export const CodeEditor: React.FC = () => {
   const { files, activeFileId } = useFileStore();
-  const { highlightRange, setCursorPosition, openFileTabs } = useEditorStore();
+  const { highlightRange, setCursorPosition, openFileTabs, navigateRequest } = useEditorStore();
   const { selectedSubprogramId, subprograms } = useSubprogramStore();
   const { currentTestSets } = useTestCaseStore();
   const { splitEditor } = useSettingsStore();
@@ -216,6 +216,29 @@ export const CodeEditor: React.FC = () => {
     }
   }, [highlightRange]);
 
+  // Handle navigateRequest — this is the primary navigation mechanism
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+
+    // Reveal and position cursor
+    editor.revealLineInCenter(navigateRequest.line);
+    editor.setPosition({ lineNumber: navigateRequest.line, column: 1 });
+    editor.focus();
+
+    // Add a flash decoration to the target line
+    const flashDec = editor.deltaDecorations([], [{
+      range: new monaco.Range(navigateRequest.line, 1, navigateRequest.line, 1),
+      options: {
+        isWholeLine: true,
+        className: 'ada-nav-flash',
+      },
+    }]);
+    setTimeout(() => editor.deltaDecorations(flashDec, []), 1200);
+  }, [navigateRequest]);
+
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       <style>{`
@@ -224,6 +247,8 @@ export const CodeEditor: React.FC = () => {
         .ada-test-pass-gutter::before { content: '✓'; color: #22c55e; font-size: 11px; font-weight: bold; }
         .ada-test-fail-gutter::before { content: '✗'; color: #ef4444; font-size: 11px; font-weight: bold; }
         .ada-test-partial-gutter::before { content: '~'; color: #f59e0b; font-size: 11px; font-weight: bold; }
+        @keyframes navFlash { 0%{background:rgba(245,158,11,0.35)} 100%{background:transparent} }
+        .ada-nav-flash { animation: navFlash 1.2s ease forwards !important; }
       `}</style>
 
       <StickySubprogramHeader line={currentLine} />
