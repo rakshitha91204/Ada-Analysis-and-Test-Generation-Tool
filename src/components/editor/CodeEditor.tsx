@@ -4,6 +4,7 @@ import { useEditorStore } from '../../store/useEditorStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+
 const MonacoEditor = React.lazy(() =>
   import('@monaco-editor/react').then((m) => ({ default: m.default }))
 );
@@ -52,7 +53,7 @@ const StickySubprogramHeader: React.FC<{ line: number }> = ({ line }) => {
   );
 };
 
-// ── Single Monaco instance ────────────────────────────────────────────────────
+// ── Single Monaco pane ────────────────────────────────────────────────────────
 interface SingleEditorProps {
   fileId: string | null;
   onMount: (
@@ -71,11 +72,17 @@ const SingleEditor: React.FC<SingleEditorProps> = ({ fileId, onMount, onCursorCh
   return (
     <Suspense fallback={<EditorSkeleton />}>
       <ErrorBoundaryEditor content={content}>
+        {/*
+          key={fileId} forces Monaco to fully remount when the active file changes.
+          This is the correct way to switch files in Monaco — the value prop alone
+          does not reliably update the editor content after initial mount.
+        */}
         <MonacoEditor
+          key={fileId ?? 'empty'}
           height="100%"
           defaultLanguage="ada"
           theme="ada-dark"
-          value={content}
+          defaultValue={content}
           options={{
             fontSize,
             fontFamily: '"JetBrains Mono", monospace',
@@ -123,7 +130,7 @@ export const CodeEditor: React.FC = () => {
     ? openFileTabs.find((id) => id !== activeFileId) ?? null
     : null;
 
-  // ── Execute navigation (scroll + flash) ──────────────────────────────────
+  // ── Execute navigation ────────────────────────────────────────────────────
   const executeNav = useCallback((line: number) => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -166,25 +173,25 @@ export const CodeEditor: React.FC = () => {
         editor.getAction('editor.action.startFindReplaceAction')?.run();
       });
 
-      // Flush any pending navigation that arrived before mount
+      // Flush pending navigation (arrived before this mount)
       if (pendingNavRef.current) {
         const { line } = pendingNavRef.current;
         pendingNavRef.current = null;
-        setTimeout(() => executeNav(line), 100);
+        setTimeout(() => executeNav(line), 150);
       }
     },
     [setCursorPosition, executeNav]
   );
 
-  // ── React to navigateRequest ──────────────────────────────────────────────
+  // ── Navigate on request ───────────────────────────────────────────────────
   useEffect(() => {
     if (!navigateRequest) return;
-    // Small delay to let the tab switch + React render complete
-    const t = setTimeout(() => executeNav(navigateRequest.line), 80);
+    // Give the key-based remount time to complete before scrolling
+    const t = setTimeout(() => executeNav(navigateRequest.line), 200);
     return () => clearTimeout(t);
   }, [navigateRequest, executeNav]);
 
-  // ── Decorations: highlight + test status ─────────────────────────────────
+  // ── Decorations ───────────────────────────────────────────────────────────
   useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -218,7 +225,9 @@ export const CodeEditor: React.FC = () => {
       decs.push({
         range: new monaco.Range(sub.startLine, 1, sub.startLine, 1),
         options: {
-          glyphMarginClassName: hasFail ? 'ada-test-fail-gutter' : allPass ? 'ada-test-pass-gutter' : 'ada-test-partial-gutter',
+          glyphMarginClassName: hasFail
+            ? 'ada-test-fail-gutter'
+            : allPass ? 'ada-test-pass-gutter' : 'ada-test-partial-gutter',
           glyphMarginHoverMessage: {
             value: hasFail
               ? `❌ ${tests.filter((t) => t.runStatus === 'fail').length} failing`
@@ -231,7 +240,7 @@ export const CodeEditor: React.FC = () => {
     decorationsRef.current = editor.deltaDecorations([], decs);
   }, [selectedSubprogramId, subprograms, activeFileId, currentTestSets]);
 
-  // ── Diagnostic markers (error squiggles) ─────────────────────────────────
+  // ── Diagnostic markers ────────────────────────────────────────────────────
   useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -239,12 +248,10 @@ export const CodeEditor: React.FC = () => {
     const model = editor.getModel();
     if (!model) return;
 
-    // Import diagnostics dynamically to avoid circular deps
     import('../../mocks/mockDiagnostics').then(({ mockDiagnostics }) => {
       const { files } = useFileStore.getState();
       const activeFile = files.find((f) => f.id === activeFileId);
       if (!activeFile) return;
-
       const markers = mockDiagnostics
         .filter((d) => d.file === activeFile.name)
         .map((d) => ({
@@ -260,12 +267,11 @@ export const CodeEditor: React.FC = () => {
           endColumn: d.column + 20,
           source: 'Ada Analysis',
         }));
-
       monaco.editor.setModelMarkers(model, 'ada-diagnostics', markers);
     });
   }, [activeFileId]);
 
-  // ── Legacy highlightRange support ────────────────────────────────────────
+  // ── Legacy highlight range ────────────────────────────────────────────────
   useEffect(() => {
     if (editorRef.current && highlightRange) {
       editorRef.current.revealLineInCenter(highlightRange.start);
@@ -291,7 +297,11 @@ export const CodeEditor: React.FC = () => {
           className={splitEditor ? 'w-1/2 border-r h-full' : 'w-full h-full'}
           style={{ borderColor: 'var(--border-default)' }}
         >
-          <SingleEditor fileId={activeFileId} onMount={handleEditorMount} onCursorChange={setCurrentLine} />
+          <SingleEditor
+            fileId={activeFileId}
+            onMount={handleEditorMount}
+            onCursorChange={setCurrentLine}
+          />
         </div>
         {splitEditor && (
           <div className="w-1/2 h-full">

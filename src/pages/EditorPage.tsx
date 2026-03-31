@@ -52,9 +52,12 @@ const EditorPage: React.FC = () => {
     const session = loadSession();
     if (session && session.files.length > 0) {
       loadFromSession(session.files, session.folders, session.activeFileId);
+      // Open tabs for restored files
+      session.files.forEach((f) => openTab(f.id));
       if (session.activeFileId) setActiveFile(session.activeFileId);
     } else if (files.length === 0) {
       addFiles(mockFiles);
+      mockFiles.forEach((f) => openTab(f.id));
       setActiveFile('file_calculator_adb');
     }
     setSubprograms(mockSubprograms);
@@ -65,8 +68,9 @@ const EditorPage: React.FC = () => {
     selectSubprogram('sub_multiply');
   }, []); // eslint-disable-line
 
+  // Open tabs whenever new files are added (e.g. from upload page)
   useEffect(() => {
-    if (files.length > 0) files.forEach((f) => openTab(f.id));
+    files.forEach((f) => openTab(f.id));
   }, [files.length]); // eslint-disable-line
 
   useFileParser();
