@@ -146,40 +146,92 @@ export function analyzeAdaSource(
 
 function extractVariables(lines: string[], subprograms: Subprogram[]): VariableInfo[] {
   const vars: VariableInfo[] = [];
-  // Match: NAME : [constant] TYPE [:= VALUE];
-  const varRe = /^\s+(\w+)\s*:\s*(constant\s+)?([\w.]+(?:\s*\([\w\s,]+\))?)\s*(?::=\s*([^;]+))?;/i;
+  const seen = new Set<string>();
+
+  /**
+   * Ada variable declaration patterns:
+   *   Name : Type;
+   *   Name : Type := Value;
+   *   Name : constant Type := Value;
+   *   Name1, Name2 : Type;
+   *
+   * We match any line that has the form:
+   *   IDENTIFIER(s) : [constant] TYPENAME [[:= ...]] ;
+   * and is NOT a subprogram/package/type/task/entry/with/use declaration.
+   */
+  const varRe = /^\s*([\w,\s]+?)\s*:\s*(constant\s+)?([\w.]+(?:\s*\([\w\s,.]+\))?)\s*(?::=\s*([^;]+?))?\s*;/i;
+
+  // Lines to skip — these are declarations, not variable assignments
+  const skipRe = /^\s*(procedure|function|package|type|subtype|task|protected|entry|with|use|pragma|generic|overriding)\b/i;
+  // Also skip lines that are clearly statements (assignments, calls, returns)
+  const stmtRe = /^\s*\w[\w.]*\s*:=/; // assignment statement (not declaration)
+  const callRe = /^\s*\w[\w.]*\s*\(/;  // procedure call
 
   lines.forEach((line, i) => {
-    if (/^\s*--/.test(line)) return;
-    // Skip procedure/function/package/type declarations
-    if (/^\s*(procedure|function|package|type|subtype|task|protected)\b/i.test(line)) return;
+    const lineNum = i + 1;
+    const trimmed = line.trim();
+
+    // Skip blank lines and comments
+    if (!trimmed || trimmed.startsWith('--')) return;
+    // Skip keyword-led declarations
+    if (skipRe.test(line)) return;
+    // Skip begin/end/is/then/else/loop/return/raise/null
+    if (/^\s*(begin|end|is|then|else|elsif|loop|return|raise|null|when|others|declare|exception)\b/i.test(line)) return;
 
     const m = varRe.exec(line);
     if (!m) return;
 
-    const name = m[1];
+    // The names part (before the colon) — could be "A, B, C"
+    const namesPart = m[1].trim();
+    const isConstant = !!m[2];
     const datatype = m[3].trim();
     const initialValue = m[4]?.trim();
-    const lineNum = i + 1;
 
-    // Determine scope: find which subprogram this line belongs to
-    const ownerSub = subprograms.find(
-      (s) => lineNum > s.startLine && lineNum < s.endLine
-    );
+    // Skip if datatype looks like a keyword (false positive)
+    if (/^(in|out|return|is|begin|end|then|else|loop|when|others)$/i.test(datatype)) return;
+    // Skip if namesPart contains spaces that aren't comma-separated (likely a statement)
+    if (/\s/.test(namesPart.replace(/,\s*/g, ''))) return;
 
-    // Skip parameter names (they appear in signatures)
-    const isParam = subprograms.some((s) =>
-      s.parameters.some((p) => p.name.toLowerCase() === name.toLowerCase())
-    );
-    if (isParam) return;
+    const names = namesPart.split(',').map((n) => n.trim()).filter(Boolean);
 
-    vars.push({
-      name,
-      datatype,
-      scope: ownerSub ? 'local' : 'global',
-      subprogramName: ownerSub?.name,
-      line: lineNum,
-      initialValue,
+    names.forEach((name) => {
+      if (!name || !/^\w+$/.test(name)) return;
+      // Skip Ada keywords used as identifiers
+      if (/^(begin|end|is|then|else|loop|return|raise|null|when|others|declare|exception|procedure|function|package|type|subtype|constant|with|use|in|out|and|or|not|if|for|while|case|record|array|access|new|of|at|mod|rem|xor|abs|true|false)$/i.test(name)) return;
+
+      // Determine scope
+      const ownerSub = subprograms.find(
+        (s) => lineNum > s.startLine && lineNum <= s.endLine
+      );
+
+      // Skip if this name is a parameter of the owning subprogram
+      if (ownerSub) {
+        const isParam = ownerSub.parameters.some(
+          (p) => p.name.toLowerCase() === name.toLowerCase()
+        );
+        if (isParam) return;
+      }
+
+      // Also skip if it's a parameter of ANY subprogram (for global scope)
+      if (!ownerSub) {
+        const isAnyParam = subprograms.some((s) =>
+          s.parameters.some((p) => p.name.toLowerCase() === name.toLowerCase())
+        );
+        if (isAnyParam) return;
+      }
+
+      const key = `${name}_${lineNum}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      vars.push({
+        name,
+        datatype: isConstant ? `constant ${datatype}` : datatype,
+        scope: ownerSub ? 'local' : 'global',
+        subprogramName: ownerSub?.name,
+        line: lineNum,
+        initialValue,
+      });
     });
   });
 
@@ -225,19 +277,29 @@ function extractCallGraph(lines: string[], subprograms: Subprogram[]): CallEdge[
 // ── Global read/write ─────────────────────────────────────────────────────────
 
 function extractGlobalReadWrite(lines: string[], subprograms: Subprogram[]): GlobalReadWrite[] {
-  // Find global variables (declared outside any subprogram)
-  const globalVarRe = /^\s{0,4}(\w+)\s*:\s*(?:constant\s+)?[\w.]+/i;
-  const globalVars: string[] = [];
+  // First collect all global variable names using the same logic as extractVariables
+  const globalVarNames: string[] = [];
+  const varRe = /^\s*([\w,\s]+?)\s*:\s*(?:constant\s+)?([\w.]+(?:\s*\([\w\s,.]+\))?)\s*(?::=\s*[^;]+?)?\s*;/i;
+  const skipRe = /^\s*(procedure|function|package|type|subtype|task|protected|entry|with|use|pragma|begin|end|is|then|else|elsif|loop|return|raise|null|when|others|declare|exception)\b/i;
 
   lines.forEach((line, i) => {
-    if (/^\s*--/.test(line)) return;
-    if (/^\s*(procedure|function|package|type|subtype|task|with|use)\b/i.test(line)) return;
-    const m = globalVarRe.exec(line);
-    if (m) {
-      const lineNum = i + 1;
-      const inAnySub = subprograms.some((s) => lineNum > s.startLine && lineNum < s.endLine);
-      if (!inAnySub) globalVars.push(m[1]);
-    }
+    const lineNum = i + 1;
+    if (!line.trim() || line.trim().startsWith('--')) return;
+    if (skipRe.test(line)) return;
+
+    const m = varRe.exec(line);
+    if (!m) return;
+
+    const namesPart = m[1].trim();
+    const datatype = m[2].trim();
+    if (/^(in|out|return|is|begin|end|then|else|loop|when|others)$/i.test(datatype)) return;
+
+    const inAnySub = subprograms.some((s) => lineNum > s.startLine && lineNum <= s.endLine);
+    if (inAnySub) return; // local, not global
+
+    namesPart.split(',').map((n) => n.trim()).filter((n) => /^\w+$/.test(n)).forEach((name) => {
+      if (!globalVarNames.includes(name)) globalVarNames.push(name);
+    });
   });
 
   return subprograms.map((sub) => {
@@ -248,7 +310,7 @@ function extractGlobalReadWrite(lines: string[], subprograms: Subprogram[]): Glo
       const line = lines[i - 1] ?? '';
       if (/^\s*--/.test(line)) continue;
 
-      globalVars.forEach((gv) => {
+      globalVarNames.forEach((gv) => {
         const assignRe = new RegExp(`\\b${gv}\\s*:=`, 'i');
         const readRe = new RegExp(`\\b${gv}\\b`, 'i');
         if (assignRe.test(line)) {
