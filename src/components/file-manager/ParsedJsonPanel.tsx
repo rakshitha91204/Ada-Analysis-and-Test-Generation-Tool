@@ -53,7 +53,7 @@ export const ParsedJsonPanel: React.FC = () => {
     if (!activeResult) return;
     setJsonError(null);
 
-    let parsed: { subprograms: ParsedSubprogramJson[] };
+    let parsed: { subprograms?: ParsedSubprogramJson[]; meta?: { fileName: string } };
     try {
       parsed = JSON.parse(activeResult.jsonText);
     } catch (e) {
@@ -68,7 +68,6 @@ export const ParsedJsonPanel: React.FC = () => {
 
     setGenerating(true);
 
-    // Convert JSON subprograms back to Subprogram objects and merge into store
     const jsonSubs: Subprogram[] = parsed.subprograms.map((s) => ({
       id: s.id || `${activeResult.fileId}_${s.name}_${s.startLine}`,
       fileId: activeResult.fileId,
@@ -81,23 +80,22 @@ export const ParsedJsonPanel: React.FC = () => {
       testCount: 0,
     }));
 
-    // Merge into subprogram store (keep existing from other files)
     const otherSubs = subprograms.filter((s) => s.fileId !== activeResult.fileId);
     setSubprograms([...otherSubs, ...jsonSubs]);
 
-    // Generate test cases for each subprogram
     let delay = 0;
     jsonSubs.forEach((sub) => {
-      setTimeout(() => {
-        generateTests(sub);
-      }, delay);
+      setTimeout(() => { generateTests(sub); }, delay);
       delay += 100;
     });
 
     setTimeout(() => {
       setGenerating(false);
       setActiveTab('tests');
-      showToast(`Generated tests for ${jsonSubs.length} subprogram(s) from JSON`, 'success');
+      showToast(
+        `Generated tests for ${jsonSubs.length} subprogram(s) from ${parsed.meta?.fileName ?? activeResult.fileName}`,
+        'success'
+      );
     }, delay + 200);
   };
 
@@ -174,7 +172,11 @@ export const ParsedJsonPanel: React.FC = () => {
                 {(() => {
                   try {
                     const d = JSON.parse(activeResult.jsonText);
-                    return `${d.subprograms?.length ?? 0} subprograms · editable`;
+                    const subs = d.subprograms?.length ?? 0;
+                    const vars = d.variables?.length ?? 0;
+                    const edges = d.call_graph?.length ?? 0;
+                    const dead = d.dead_code?.length ?? 0;
+                    return `${subs} subprograms · ${vars} vars · ${edges} call edges · ${dead} dead code`;
                   } catch {
                     return 'Invalid JSON';
                   }

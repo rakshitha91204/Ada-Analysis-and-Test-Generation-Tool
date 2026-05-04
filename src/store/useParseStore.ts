@@ -4,12 +4,14 @@
  */
 import { create } from 'zustand';
 import { Subprogram } from '../types/subprogram.types';
+import { AdaFullAnalysis } from '../utils/adaAnalyzer';
 
 export interface ParsedFileResult {
   fileId: string;
   fileName: string;
   parsedAt: string;
   subprograms: Subprogram[];
+  analysis: AdaFullAnalysis;
   /** The editable JSON string shown in the JSON editor panel */
   jsonText: string;
 }

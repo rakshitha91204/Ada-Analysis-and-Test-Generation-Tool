@@ -7,7 +7,7 @@ import { FileStatusBadge } from './FileStatusBadge';
 import { Badge } from '../shared/Badge';
 import { EmptyState } from '../shared/EmptyState';
 import { AdaFile } from '../../types/file.types';
-import { parseSubprograms } from '../../utils/adaParser';
+import { analyzeAdaSource } from '../../utils/adaAnalyzer';
 import { showToast } from '../shared/Toast';
 
 // ── Single file row ──────────────────────────────────────────────────────────
@@ -176,32 +176,35 @@ export const FileManager: React.FC = () => {
 
   const handleParseClick = (file: AdaFile) => {
     try {
-      const subs = parseSubprograms(file.content, file.id);
-      // Build clean JSON structure for display/editing
-      const jsonData = {
-        file: file.name,
-        type: file.type,
-        parsedAt: new Date().toISOString(),
-        subprograms: subs.map((s) => ({
-          id: s.id,
-          name: s.name,
-          kind: s.kind,
-          parameters: s.parameters,
-          returnType: s.returnType ?? null,
-          startLine: s.startLine,
-          endLine: s.endLine,
-        })),
-      };
-      const jsonText = JSON.stringify(jsonData, null, 2);
+      const analysis = analyzeAdaSource(file.content, file.name, file.type);
+      const jsonText = JSON.stringify(analysis, null, 2);
       setResult(file.id, {
         fileId: file.id,
         fileName: file.name,
         parsedAt: new Date().toISOString(),
-        subprograms: subs,
+        subprograms: analysis.subprograms.map((s) => ({
+          id: s.id,
+          fileId: file.id,
+          name: s.name,
+          kind: s.kind,
+          parameters: s.parameters.map((p) => ({
+            name: p.name,
+            paramType: p.paramType,
+            mode: (p.mode as 'in' | 'out' | 'in out'),
+          })),
+          returnType: s.returnType ?? undefined,
+          startLine: s.startLine,
+          endLine: s.endLine,
+          testCount: 0,
+        })),
+        analysis,
         jsonText,
       });
       setActiveResult(file.id);
-      showToast(`Parsed ${subs.length} subprogram(s) from ${file.name}`, 'success');
+      showToast(
+        `Parsed ${analysis.meta.totalSubprograms} subprogram(s) · ${analysis.variables.length} variables · ${analysis.call_graph.length} call edges`,
+        'success'
+      );
     } catch (err) {
       showToast(`Parse failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
