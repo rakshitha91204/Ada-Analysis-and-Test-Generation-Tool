@@ -1,0 +1,66 @@
+import { Subprogram } from '../types/subprogram.types';
+
+export const mockSubprograms: Subprogram[] = [
+  {
+    id: 'sub_add',
+    fileId: 'file_calculator_adb',
+    name: 'Add',
+    kind: 'procedure',
+    parameters: [
+      { name: 'X', paramType: 'Integer', mode: 'in' },
+      { name: 'Y', paramType: 'Integer', mode: 'in' },
+      { name: 'Result', paramType: 'Integer', mode: 'out' },
+    ],
+    returnType: undefined,
+    startLine: 7,
+    endLine: 10,
+    testCount: 4,
+    lastGeneratedAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'sub_subtract',
+    fileId: 'file_calculator_adb',
+    name: 'Subtract',
+    kind: 'procedure',
+    parameters: [
+      { name: 'X', paramType: 'Integer', mode: 'in' },
+      { name: 'Y', paramType: 'Integer', mode: 'in' },
+      { name: 'Result', paramType: 'Integer', mode: 'out' },
+    ],
+    returnType: undefined,
+    startLine: 12,
+    endLine: 15,
+    testCount: 3,
+    lastGeneratedAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: 'sub_multiply',
+    fileId: 'file_calculator_adb',
+    name: 'Multiply',
+    kind: 'function',
+    parameters: [
+      { name: 'X', paramType: 'Integer', mode: 'in' },
+      { name: 'Y', paramType: 'Integer', mode: 'in' },
+    ],
+    returnType: 'Integer',
+    startLine: 17,
+    endLine: 23,
+    testCount: 5,
+    lastGeneratedAt: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: 'sub_divide',
+    fileId: 'file_calculator_adb',
+    name: 'Divide',
+    kind: 'function',
+    parameters: [
+      { name: 'X', paramType: 'Integer', mode: 'in' },
+      { name: 'Y', paramType: 'Integer', mode: 'in' },
+    ],
+    returnType: 'Float',
+    startLine: 25,
+    endLine: 34,
+    testCount: 5,
+    lastGeneratedAt: new Date(Date.now() - 900000).toISOString(),
+  },
+];

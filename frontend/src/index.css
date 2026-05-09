@@ -1,0 +1,284 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #0a0a0a;
+  --bg-surface: #111111;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #222222;
+  --accent-primary: #facc15;
+  --accent-secondary: #fb923c;
+  --accent-success: #22c55e;
+  --accent-danger: #ef4444;
+  --accent-warning: #eab308;
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --border-default: #1c1c1c;
+  --border-active: #facc15;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Page transition */
+.page-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.page-enter-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+.page-exit {
+  transform: translateX(0);
+  opacity: 1;
+}
+.page-exit-active {
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+/* Slide-up animation for file cards */
+@keyframes slideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.25s ease forwards;
+}
+
+/* Context menu animation */
+@keyframes contextMenuIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.context-menu-enter {
+  animation: contextMenuIn 0.15s ease forwards;
+}
+
+/* Amber pulse for new errors */
+@keyframes amberPulse {
+  0% { background-color: rgba(245, 158, 11, 0.2); }
+  50% { background-color: rgba(245, 158, 11, 0.05); }
+  100% { background-color: transparent; }
+}
+
+.amber-pulse {
+  animation: amberPulse 0.6s ease forwards;
+}
+
+/* Badge bounce */
+@keyframes badgeBounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.badge-bounce {
+  animation: badgeBounce 0.2s ease;
+}
+
+/* Spinning animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Toast slide in */
+@keyframes toastIn {
+  from {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toastIn 0.3s ease forwards;
+}
+
+.toast-exit {
+  animation: toastOut 0.3s ease forwards;
+}
+
+/* Graph fade in */
+@keyframes graphFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.graph-fade-in {
+  animation: graphFadeIn 0.4s ease forwards;
+}
+
+/* Tab crossfade */
+.tab-content {
+  transition: opacity 0.2s ease;
+}
+
+/* Button hover lift */
+.btn-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+/* Panel resize cursor */
+.resize-handle-h {
+  cursor: col-resize;
+}
+.resize-handle-v {
+  cursor: row-resize;
+}
+
+/* Skeleton loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Accordion height animation */
+.accordion-content {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.25s ease;
+}
+
+/* Monaco editor container */
+.monaco-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Dropzone glow */
+.dropzone-active {
+  background-color: rgba(245, 158, 11, 0.05);
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 0 20px rgba(245, 158, 11, 0.1);
+}
+
+/* Glass morphism */
+.glass {
+  background: rgba(22, 22, 26, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-default);
+}
+
+/* Resizable panel */
+.panel-resizer {
+  flex-shrink: 0;
+  background: var(--border-default);
+  transition: background 0.15s ease;
+  position: relative;
+  z-index: 10;
+}
+.panel-resizer:hover,
+.panel-resizer.active {
+  background: var(--accent-primary);
+}
+
+/* Code font */
+.font-code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Truncate text */
+.truncate-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Focus ring */
+.focus-ring:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: rgba(245, 158, 11, 0.3);
+  color: var(--text-primary);
+}
