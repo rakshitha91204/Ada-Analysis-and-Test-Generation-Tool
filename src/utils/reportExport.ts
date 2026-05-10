@@ -5,7 +5,7 @@
 import { AdaFile } from '../types/file.types';
 import { Subprogram } from '../types/subprogram.types';
 import { TestCaseSet } from '../types/testcase.types';
-import { Diagnostic } from '../mocks/mockDiagnostics';
+import { Diagnostic } from '../types/diagnostic.types';
 
 interface ReportData {
   files: AdaFile[];

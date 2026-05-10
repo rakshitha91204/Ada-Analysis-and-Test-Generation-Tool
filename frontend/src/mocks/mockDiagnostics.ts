@@ -1,16 +1,10 @@
-export interface Diagnostic {
-  id: string;
-  severity: 'error' | 'warning' | 'info';
-  message: string;
-  file: string;
-  line: number;
-  column: number;
-}
+// Re-export Diagnostic type from the canonical types file
+export type { Diagnostic } from '../types/diagnostic.types';
 
-export const mockDiagnostics: Diagnostic[] = [
+export const mockDiagnostics = [
   {
     id: 'diag_1',
-    severity: 'warning',
+    severity: 'warning' as const,
     message: 'Unused variable "Temp" declared but never referenced',
     file: 'calculator.adb',
     line: 19,
@@ -18,7 +12,7 @@ export const mockDiagnostics: Diagnostic[] = [
   },
   {
     id: 'diag_2',
-    severity: 'warning',
+    severity: 'warning' as const,
     message: 'Unreachable code after unconditional raise statement',
     file: 'calculator.adb',
     line: 30,
@@ -26,7 +20,7 @@ export const mockDiagnostics: Diagnostic[] = [
   },
   {
     id: 'diag_3',
-    severity: 'error',
+    severity: 'error' as const,
     message: 'Missing return statement in function "Divide" — not all paths return a value',
     file: 'calculator.adb',
     line: 34,
@@ -34,7 +28,7 @@ export const mockDiagnostics: Diagnostic[] = [
   },
   {
     id: 'diag_4',
-    severity: 'warning',
+    severity: 'warning' as const,
     message: 'Parameter "Result" in procedure "Add" shadows outer scope declaration',
     file: 'calculator.ads',
     line: 8,

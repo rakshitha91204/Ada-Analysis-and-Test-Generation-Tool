@@ -29,7 +29,8 @@ import { downloadHTMLReport, downloadProjectJSON } from '../utils/reportExport';
 import { mockFiles } from '../mocks/mockFiles';
 import { mockSubprograms } from '../mocks/mockSubprograms';
 import { mockTestCaseSets, mockCurrentTestSets } from '../mocks/mockTestCases';
-import { mockDiagnostics } from '../mocks/mockDiagnostics';
+import { Diagnostic } from '../types/diagnostic.types';
+import { BugEntry } from '../utils/adaAnalyzer';
 
 const EditorPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,19 +59,18 @@ const EditorPage: React.FC = () => {
       syncToFile(activeFileId);
     }
   }, [activeFileId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Initialize: try session restore first, fall back to mock data
+  // Initialize: try session restore first, fall back to mock demo data
   useEffect(() => {
     const session = loadSession();
     const hasRealFiles = session && session.files.length > 0;
 
     if (hasRealFiles) {
-      // Restore session — files will be parsed by useFileParser (status='pending')
-      // Mark them pending so the parser picks them up
+      // Restore session — mark files pending so useFileParser picks them up on click
       const filesWithPending = session.files.map((f) => ({ ...f, status: 'pending' as const }));
       loadFromSession(filesWithPending, session.folders, session.activeFileId);
       filesWithPending.forEach((f) => openTab(f.id));
       if (session.activeFileId) setActiveFile(session.activeFileId);
-      // Don't load mock subprograms — useFileParser will populate from real files
+      // Real test history is already loaded from localStorage by useTestCaseStore init
     } else if (files.length === 0) {
       // No real files — load mock demo data
       addFiles(mockFiles);
@@ -78,13 +78,13 @@ const EditorPage: React.FC = () => {
       setActiveFile('file_calculator_adb');
       setSubprograms(mockSubprograms);
       selectSubprogram('sub_multiply');
+      // Only seed mock test history in demo mode
+      setHistory(mockTestCaseSets);
+      Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
+        setCurrentTests(subId, tests);
+      });
     }
-
-    // Always restore test history
-    setHistory(mockTestCaseSets);
-    Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
-      setCurrentTests(subId, tests);
-    });
+    // When real files exist: history is already loaded from localStorage — don't overwrite
   }, []); // eslint-disable-line
 
   // When files are added from the upload page (navigating from UploadPage),
@@ -115,11 +115,57 @@ const EditorPage: React.FC = () => {
   }, []);
 
   const handleExportReport = () => {
+    // Build real diagnostics from all parsed files' analysis results
+    const parseResults = useParseStore.getState().results;
+    const realDiagnostics: Diagnostic[] = [];
+
+    for (const result of Object.values(parseResults)) {
+      const analysis = result.analysis;
+      if (!analysis) continue;
+      const fileName = result.fileName;
+
+      // Bug report
+      const bugReport = analysis.bug_report;
+      if (bugReport) {
+        const addBugs = (items: BugEntry[], severity: Diagnostic['severity'], prefix: string) => {
+          items.forEach((b, i) => {
+            realDiagnostics.push({
+              id: `${fileName}_${prefix}_${i}`,
+              severity,
+              message: `${prefix}: ${b.expression ?? b.statement ?? b.note ?? 'detected'}`,
+              file: fileName,
+              line: b.line,
+              column: 1,
+            });
+          });
+        };
+        addBugs(bugReport.division_by_zero, 'error', 'Division by zero');
+        addBugs(bugReport.null_dereference, 'warning', 'Null dereference');
+        addBugs(bugReport.infinite_loops, 'warning', 'Infinite loop');
+        addBugs(bugReport.unreachable_code, 'warning', 'Unreachable code');
+      }
+
+      // Logical errors
+      (analysis.logical_errors ?? []).forEach((msg, i) => {
+        realDiagnostics.push({ id: `${fileName}_logical_${i}`, severity: 'error', message: msg, file: fileName, line: 0, column: 0 });
+      });
+
+      // Performance warnings
+      (analysis.performance_warnings ?? []).forEach((msg, i) => {
+        realDiagnostics.push({ id: `${fileName}_perf_${i}`, severity: 'info', message: msg, file: fileName, line: 0, column: 0 });
+      });
+
+      // Dead code
+      (analysis.dead_code ?? []).forEach((name, i) => {
+        realDiagnostics.push({ id: `${fileName}_dead_${i}`, severity: 'warning', message: `Dead code: "${name}" is never called`, file: fileName, line: 0, column: 0 });
+      });
+    }
+
     downloadHTMLReport({
       files,
       subprograms,
       testSets: testHistory,
-      diagnostics: mockDiagnostics,
+      diagnostics: realDiagnostics,
       generatedAt: new Date().toISOString(),
     });
   };

@@ -18,9 +18,10 @@ import { useFileStore } from '../store/useFileStore';
 import { useSubprogramStore } from '../store/useSubprogramStore';
 import { useParseStore } from '../store/useParseStore';
 import { parseSubprograms } from '../utils/adaParser';
-import { analyzeAdaSource } from '../utils/adaAnalyzer';
+import { analyzeAdaSource, AdaAnalysisResult } from '../utils/adaAnalyzer';
 import { analyzeFiles, checkHealth } from '../utils/apiClient';
 import type { AdaFile } from '../types/file.types';
+import type { Subprogram } from '../types/subprogram.types';
 
 // Cache backend availability — re-check every 30 s
 let backendAvailable: boolean | null = null;
@@ -31,6 +32,48 @@ async function isBackendAvailable(): Promise<boolean> {
   backendAvailable = health !== null && health.libadalang_available === true;
   setTimeout(() => { backendAvailable = null; }, 30_000);
   return backendAvailable;
+}
+
+/**
+ * Convert backend subprogram_index entries into Subprogram[] for the store.
+ * Uses the richer libadalang data (accurate line numbers, parameter strings, return types).
+ */
+function backendSubprogramsToStore(
+  analysis: AdaAnalysisResult,
+  fileId: string
+): Subprogram[] {
+  const filePath = analysis.file_paths?.[0] ?? '';
+  // Try exact path match first, then any key
+  const entries =
+    analysis.subprogram_index?.[filePath] ??
+    Object.values(analysis.subprogram_index ?? {})[0] ??
+    [];
+
+  return entries.map((s) => {
+    const params = (s.parameters ?? []).map((p: string) => {
+      const parts = p.split(':').map((x) => x.trim());
+      const namePart = parts[0] ?? 'param';
+      const typePart = parts.slice(1).join(':').trim();
+      const modeMatch = /^(in\s+out|in|out)\s+(.+)$/i.exec(typePart);
+      return {
+        name: namePart,
+        paramType: modeMatch ? modeMatch[2].trim() : typePart || 'Unknown',
+        mode: (modeMatch ? modeMatch[1].toLowerCase().replace(/\s+/, ' ').trim() : 'in') as 'in' | 'out' | 'in out',
+      };
+    });
+
+    return {
+      id: `${fileId}_${s.name}_${s.start_line}`,
+      fileId,
+      name: s.name,
+      kind: (s.return_type ? 'function' : 'procedure') as 'function' | 'procedure',
+      parameters: params,
+      returnType: s.return_type ?? undefined,
+      startLine: s.start_line,
+      endLine: s.end_line,
+      testCount: 0,
+    };
+  });
 }
 
 export function useFileParser() {
@@ -56,13 +99,17 @@ export function useFileParser() {
         // ── Backend (libadalang) path ────────────────────────────────────────
         try {
           const analysisResult = await analyzeFiles([{ name: file.name, content: file.content }]);
-          const subs = parseSubprograms(file.content, file.id);
+
+          // Use richer subprogram data from backend subprogram_index
+          const subs = backendSubprogramsToStore(analysisResult, file.id);
+          // Fall back to client-side parser if backend returned no subprograms
+          const finalSubs = subs.length > 0 ? subs : parseSubprograms(file.content, file.id);
 
           setResult(file.id, {
             fileId: file.id,
             fileName: file.name,
             parsedAt: new Date().toISOString(),
-            subprograms: subs,
+            subprograms: finalSubs,
             analysis: analysisResult,
             jsonText: JSON.stringify(analysisResult, null, 2),
           });
@@ -70,9 +117,9 @@ export function useFileParser() {
           syncToFile(file.id);
           updateFileStatus(file.id, 'parsed');
 
-          // Merge subprograms
+          // Merge subprograms into store
           const kept = subprogramsRef.current.filter((s) => s.fileId !== file.id);
-          setSubprograms([...kept, ...subs]);
+          setSubprograms([...kept, ...finalSubs]);
           return;
         } catch (backendErr) {
           console.warn('[useFileParser] Backend failed, falling back:', backendErr);
