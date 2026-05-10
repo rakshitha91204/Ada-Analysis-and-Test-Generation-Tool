@@ -335,6 +335,9 @@ export const ParsedJsonPanel: React.FC = () => {
                       : 0;
                     const loops = Object.values(d.loop_info ?? {}).reduce((a, v) => a + v, 0);
                     const tasks = d.concurrency_info?.tasks?.length ?? 0;
+                    const harness = Object.values(d.test_harness_data ?? {}).reduce((a, v) => a + v.length, 0);
+                    const stubs = Object.keys(d.mock_stub_data ?? {}).length;
+                    const astKind = d.ast_info ? Object.values(d.ast_info)[0] : null;
                     const parts = [
                       `${subs} subprograms`,
                       `${localVars} local vars`,
@@ -343,9 +346,11 @@ export const ParsedJsonPanel: React.FC = () => {
                       bugs > 0 ? `${bugs} bugs` : null,
                       loops > 0 ? `${loops} loops` : null,
                       tasks > 0 ? `${tasks} tasks` : null,
+                      harness > 0 ? `${harness} harnesses` : null,
+                      stubs > 0 ? `${stubs} stubs` : null,
+                      astKind ? `AST: ${astKind}` : null,
                     ].filter(Boolean);
-                    return parts.join(' · ');
-                  } catch {
+                    return parts.join(' · ');                  } catch {
                     return 'Invalid JSON';
                   }
                 })()}
@@ -421,6 +426,35 @@ export const ParsedJsonPanel: React.FC = () => {
             className="flex-shrink-0 p-3"
             style={{ borderTop: '1px solid #1c1c1c' }}
           >
+            {/* Backend harness button — only shown when test_harness_data is available */}
+            {(() => {
+              try {
+                const d = JSON.parse(activeResult.jsonText) as import('../../utils/adaAnalyzer').AdaAnalysisResult;
+                const harnessEntries = Object.values(d.test_harness_data ?? {}).flat();
+                if (harnessEntries.length === 0) return null;
+                return (
+                  <button
+                    onClick={() => {
+                      // Load backend harness templates as test cases via generateTests
+                      const subs = subprograms.filter((s) => s.fileId === activeResult.fileId);
+                      subs.forEach((sub) => { generateTests(sub); });
+                      setActiveTab('tests');
+                      showToast(`Loaded ${harnessEntries.length} backend harness template(s)`, 'success');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg font-mono text-xs mb-2 transition-all"
+                    style={{
+                      background: 'rgba(74,222,128,0.08)',
+                      color: '#4ade80',
+                      border: '1px solid rgba(74,222,128,0.25)',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(74,222,128,0.15)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(74,222,128,0.08)'; }}
+                  >
+                    🔧 Use Backend Harness ({harnessEntries.length} templates)
+                  </button>
+                );
+              } catch { return null; }
+            })()}
             <button
               onClick={handleGenerateTests}
               disabled={generating || !!jsonError}

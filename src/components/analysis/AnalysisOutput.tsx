@@ -71,6 +71,16 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   const globalVarsCount = Object.values(analysis?.variables_info?.[filePath]?.global_variables ?? {})
     .reduce((a, v) => a + Object.keys(v).length, 0);
 
+  // ── Global read/write ──────────────────────────────────────────────────────
+  const globalRW = analysis?.global_read_write?.[filePath] ?? { read: [], write: [] };
+
+  // ── Control flow summary ───────────────────────────────────────────────────
+  const controlFlow = analysis?.control_flow_extractor?.[filePath] ?? {};
+  const totalBranches = Object.values(controlFlow)
+    .reduce((a, v) => a + (v.if_conditions?.length ?? 0), 0);
+  const totalProcCalls = Object.values(controlFlow)
+    .reduce((a, v) => a + (v.procedure_calls?.length ?? 0), 0);
+
   // Fall back to mock diagnostics when no backend data
   const unusedVarsMock = mockDiagnostics.filter((d) => d.message.toLowerCase().includes('unused'));
   const deadCodeMock = mockDiagnostics.filter((d) => d.message.toLowerCase().includes('unreachable'));
@@ -318,6 +328,78 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Global Read / Write ─────────────────────────────────────────────── */}
+      {hasBackendData && (globalRW.read.length > 0 || globalRW.write.length > 0) && (
+        <div className={cardClass} style={cardStyle}>
+          <div className="flex items-center gap-2 mb-2">
+            <RefreshCw size={13} className="text-cyan-400" />
+            <span className="text-xs font-mono font-semibold text-zinc-300">Global Read / Write</span>
+          </div>
+          {globalRW.write.length > 0 && (
+            <div className="mb-2">
+              <p className="text-[10px] font-mono text-red-400 mb-1">Written ({globalRW.write.length})</p>
+              <div className="flex flex-wrap gap-1">
+                {globalRW.write.map((v, i) => (
+                  <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                    style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    {v}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {globalRW.read.length > 0 && (
+            <div>
+              <p className="text-[10px] font-mono text-blue-400 mb-1">Read ({globalRW.read.length})</p>
+              <div className="flex flex-wrap gap-1">
+                {globalRW.read.map((v, i) => (
+                  <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                    style={{ background: 'rgba(96,165,250,0.1)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.2)' }}>
+                    {v}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Control Flow Summary ────────────────────────────────────────────── */}
+      {hasBackendData && (totalBranches > 0 || totalProcCalls > 0) && (
+        <div className={cardClass} style={cardStyle}>
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart2 size={13} className="text-indigo-400" />
+            <span className="text-xs font-mono font-semibold text-zinc-300">Control Flow</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-800/40">
+              <span className="text-[10px] font-mono text-zinc-500">Branch conditions</span>
+              <span className="text-sm font-mono font-bold text-indigo-400">{totalBranches}</span>
+            </div>
+            <div className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-800/40">
+              <span className="text-[10px] font-mono text-zinc-500">Procedure calls</span>
+              <span className="text-sm font-mono font-bold text-violet-400">{totalProcCalls}</span>
+            </div>
+          </div>
+          {Object.entries(controlFlow).slice(0, 4).map(([subName, cf]) => (
+            cf.if_conditions && cf.if_conditions.length > 0 ? (
+              <div key={subName} className="mb-1">
+                <p className="text-[9px] font-mono text-zinc-600 mb-0.5">{subName}</p>
+                {cf.if_conditions.slice(0, 2).map((cond, i) => (
+                  <div key={i} className="flex items-center gap-1 py-0.5 px-1">
+                    <span className="text-[9px] font-mono px-1 rounded"
+                      style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc' }}>
+                      {cond.branch_type}
+                    </span>
+                    <span className="text-[9px] font-mono text-zinc-500 truncate">{cond.condition_text}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          ))}
         </div>
       )}
 

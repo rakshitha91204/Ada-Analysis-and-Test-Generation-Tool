@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Download, Play, ChevronDown, BarChart2 } from 'lucide-react';
+import { RefreshCw, Download, Play, ChevronDown, BarChart2, Code2 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
+import { useParseStore } from '../../store/useParseStore';
+import { useFileStore } from '../../store/useFileStore';
 import { TestCaseCard } from './TestCaseCard';
 import { TestCaseHistory } from './TestCaseHistory';
 import { CoverageHeatmap } from './CoverageHeatmap';
@@ -31,6 +33,17 @@ export const TestCasePanel: React.FC = () => {
 
   const selectedSub = subprograms.find((s) => s.id === selectedSubprogramId);
   const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId] || []) : [];
+
+  // ── Backend harness template for selected subprogram ──────────────────────
+  const { results, activeResultFileId } = useParseStore();
+  const { activeFileId } = useFileStore();
+  const activeResult = activeResultFileId ? results[activeResultFileId] : activeFileId ? results[activeFileId] : null;
+  const harnessTemplate = (() => {
+    if (!selectedSub || !activeResult?.analysis?.test_harness_data) return null;
+    const allEntries = Object.values(activeResult.analysis.test_harness_data).flat();
+    return allEntries.find((e) => e.original_subprogram === selectedSub.name) ?? null;
+  })();
+  const [showHarness, setShowHarness] = useState(false);
 
   const generateForSelected = useCallback(() => {
     if (!selectedSub) return;
@@ -194,18 +207,44 @@ export const TestCasePanel: React.FC = () => {
               action={{ label: 'Generate Now', onClick: generateForSelected }}
             />
           ) : (
-            tests.map((tc, i) => (
-              <TestCaseCard
-                key={tc.id}
-                testCase={tc}
-                index={i}
-                subprogramId={selectedSubprogramId}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                isDragging={draggingIdx === i}
-              />
-            ))
+            <>
+              {/* Backend harness template (collapsible) */}
+              {harnessTemplate && (
+                <div className="rounded-lg border overflow-hidden flex-shrink-0"
+                  style={{ borderColor: 'rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.04)' }}>
+                  <button
+                    onClick={() => setShowHarness((v) => !v)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                  >
+                    <Code2 size={11} style={{ color: '#4ade80' }} />
+                    <span className="text-[10px] font-mono font-semibold" style={{ color: '#4ade80' }}>
+                      Backend Harness Template
+                    </span>
+                    <span className="ml-auto text-[9px] font-mono" style={{ color: '#52525b' }}>
+                      {showHarness ? '▲ hide' : '▼ show'}
+                    </span>
+                  </button>
+                  {showHarness && (
+                    <pre className="px-3 pb-3 text-[10px] font-mono overflow-x-auto"
+                      style={{ color: '#a1a1aa', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {harnessTemplate.template}
+                    </pre>
+                  )}
+                </div>
+              )}
+              {tests.map((tc, i) => (
+                <TestCaseCard
+                  key={tc.id}
+                  testCase={tc}
+                  index={i}
+                  subprogramId={selectedSubprogramId}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  isDragging={draggingIdx === i}
+                />
+              ))}
+            </>
           )}
         </div>
       </div>
