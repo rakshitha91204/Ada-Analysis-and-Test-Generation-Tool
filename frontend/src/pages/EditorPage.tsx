@@ -20,6 +20,7 @@ import { useTestCaseStore } from '../store/useTestCaseStore';
 import { showToast } from '../components/shared/Toast';
 import { useEditorStore } from '../store/useEditorStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useParseStore } from '../store/useParseStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useFileParser } from '../hooks/useFileParser';
@@ -36,6 +37,7 @@ const EditorPage: React.FC = () => {
   const { subprograms, setSubprograms, selectSubprogram } = useSubprogramStore();
   const { setHistory, setCurrentTests, history: testHistory } = useTestCaseStore();
   const { rightPanelCollapsed, bottomPanelCollapsed, toggleRightPanel, toggleBottomPanel, openTab } = useEditorStore();
+  const { syncToFile } = useParseStore();
   const {
     rightPanelWidth, bottomPanelHeight, setRightPanelWidth, setBottomPanelHeight,
     fontSize, setFontSize, minimapEnabled, setMinimapEnabled, splitEditor, setSplitEditor,
@@ -48,6 +50,13 @@ const EditorPage: React.FC = () => {
   const rightPanel = useResizablePanel(rightPanelWidth, 'horizontal', setRightPanelWidth, 180, 600);
   const bottomPanel = useResizablePanel(bottomPanelHeight, 'vertical', setBottomPanelHeight, 100, 500);
 
+  // Whenever the active file changes, sync the JSON panel to show that file's result
+  const { activeFileId } = useFileStore();
+  useEffect(() => {
+    if (activeFileId) {
+      syncToFile(activeFileId);
+    }
+  }, [activeFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Initialize: try session restore first, fall back to mock data
   useEffect(() => {
     const session = loadSession();

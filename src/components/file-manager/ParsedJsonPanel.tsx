@@ -1,6 +1,7 @@
 import React, { Suspense, useCallback, useRef, useState } from 'react';
-import { Zap, TestTube, Copy, Check, Download, AlertCircle } from 'lucide-react';
+import { Zap, TestTube, Copy, Check, Download, AlertCircle, Loader } from 'lucide-react';
 import { useParseStore } from '../../store/useParseStore';
+import { useFileStore } from '../../store/useFileStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useEditorStore } from '../../store/useEditorStore';
@@ -26,6 +27,7 @@ interface ParsedSubprogramJson {
 
 export const ParsedJsonPanel: React.FC = () => {
   const { results, activeResultFileId, updateJsonText, setActiveResult } = useParseStore();
+  const { files } = useFileStore();
   const { generateTests, setCurrentTests } = useTestCaseStore();
   const { setSubprograms, subprograms } = useSubprogramStore();
   const { setActiveTab } = useEditorStore();
@@ -36,6 +38,12 @@ export const ParsedJsonPanel: React.FC = () => {
 
   const activeResult = activeResultFileId ? results[activeResultFileId] : null;
   const allResults = Object.values(results);
+
+  // Find the active file object (may exist even if not yet parsed)
+  const activeFile = activeResultFileId
+    ? files.find((f) => f.id === activeResultFileId)
+    : null;
+  const isParsing = activeFile && (activeFile.status === 'parsing' || activeFile.status === 'pending');
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
@@ -154,7 +162,43 @@ export const ParsedJsonPanel: React.FC = () => {
         <div>
           <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>No files parsed yet</p>
           <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
-            Go to the Files tab, hover a file,<br />and click the <span style={{ color: '#facc15' }}>Parse</span> button
+            Click any file in the Files tab<br />to open it — JSON appears automatically
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // File is selected but still being parsed
+  if (activeResultFileId && !activeResult && isParsing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+        <Loader size={22} className="animate-spin" style={{ color: '#facc15' }} />
+        <div>
+          <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>
+            Analyzing {activeFile?.name ?? 'file'}...
+          </p>
+          <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
+            Running libadalang analysis
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // File selected but not yet parsed (pending)
+  if (activeResultFileId && !activeResult) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)' }}>
+          <Zap size={22} style={{ color: '#facc15' }} />
+        </div>
+        <div>
+          <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>
+            {activeFile?.name ?? 'File'} not parsed yet
+          </p>
+          <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
+            Click <span style={{ color: '#facc15' }}>Parse</span> on the file row<br />to generate its JSON analysis
           </p>
         </div>
       </div>

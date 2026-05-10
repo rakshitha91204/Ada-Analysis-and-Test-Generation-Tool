@@ -19,6 +19,13 @@ interface ParseStore {
   updateJsonText: (fileId: string, text: string) => void;
   setActiveResult: (fileId: string | null) => void;
   clearResult: (fileId: string) => void;
+  /**
+   * Sync the active JSON result to the given fileId.
+   * If a result exists for that file it becomes active immediately.
+   * If not, sets activeResultFileId anyway so the panel can show a
+   * "waiting for parse" state.
+   */
+  syncToFile: (fileId: string | null) => void;
 }
 
 export const useParseStore = create<ParseStore>((set) => ({
@@ -39,6 +46,8 @@ export const useParseStore = create<ParseStore>((set) => ({
     })),
 
   setActiveResult: (fileId) => set({ activeResultFileId: fileId }),
+
+  syncToFile: (fileId) => set({ activeResultFileId: fileId }),
 
   clearResult: (fileId) =>
     set((state) => {

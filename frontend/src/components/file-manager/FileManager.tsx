@@ -16,7 +16,7 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean; onParseClick: (file: 
 }) => {
   const { activeFileId, setActiveFile, removeFile } = useFileStore();
   const { openTab, setActiveTab } = useEditorStore();
-  const { results } = useParseStore();
+  const { results, syncToFile } = useParseStore();
   const isActive = file.id === activeFileId;
   const isParsed = !!results[file.id];
   const [parsing, setParsing] = useState(false);
@@ -25,6 +25,8 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean; onParseClick: (file: 
     setActiveFile(file.id);
     openTab(file.id);
     setActiveTab('code');
+    // Auto-show this file's JSON in the JSON panel
+    syncToFile(file.id);
   };
 
   const handleReplace = () => {

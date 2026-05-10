@@ -37,10 +37,12 @@ async function isBackendAvailable(): Promise<boolean> {
 export function useFileParser() {
   const { files, updateFileStatus } = useFileStore();
   const { setSubprograms, subprograms } = useSubprogramStore();
-  const { setResult } = useParseStore();
+  const { setResult, syncToFile, activeResultFileId } = useParseStore();
   const parsedIds = useRef<Set<string>>(new Set());
   const subprogramsRef = useRef(subprograms);
   subprogramsRef.current = subprograms;
+  const activeResultFileIdRef = useRef(activeResultFileId);
+  activeResultFileIdRef.current = activeResultFileId;
 
   useEffect(() => {
     const pendingFiles = files.filter(
@@ -81,6 +83,12 @@ export function useFileParser() {
                 analysis: analysisResult,
                 jsonText: JSON.stringify(analysisResult, null, 2),
               });
+
+              // Auto-activate this file's result if it's the currently active file
+              // or if no result is active yet
+              if (!activeResultFileIdRef.current || activeResultFileIdRef.current === file.id) {
+                syncToFile(file.id);
+              }
 
               updateFileStatus(file.id, 'parsed');
             } catch (err) {
@@ -130,6 +138,12 @@ export function useFileParser() {
                 analysis,
                 jsonText: JSON.stringify(analysis, null, 2),
               });
+
+              // Auto-activate this file's result if it's the currently active file
+              // or if no result is active yet
+              if (!activeResultFileIdRef.current || activeResultFileIdRef.current === file.id) {
+                syncToFile(file.id);
+              }
 
               updateFileStatus(file.id, 'parsed');
             } catch (err) {
