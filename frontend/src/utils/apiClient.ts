@@ -8,6 +8,8 @@
  * In production, point VITE_API_BASE_URL at the deployed server.
  */
 
+/// <reference types="vite/client" />
+
 import { AdaAnalysisResult } from './adaAnalyzer';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';

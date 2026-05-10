@@ -109,10 +109,10 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
         <Loader size={11} className="animate-spin flex-shrink-0" style={{ color: '#facc15' }} />
       )}
       {isParsed && !isParsing && (
-        <CheckCircle size={11} style={{ color: '#4ade80', flexShrink: 0 }} title="Parsed — JSON ready" />
+        <CheckCircle size={11} style={{ color: '#4ade80', flexShrink: 0 }} aria-label="Parsed — JSON ready" />
       )}
       {isError && !isParsing && (
-        <AlertCircle size={11} style={{ color: '#f87171', flexShrink: 0 }} title={file.errorMessage ?? 'Error'} />
+        <AlertCircle size={11} style={{ color: '#f87171', flexShrink: 0 }} aria-label={file.errorMessage ?? 'Error'} />
       )}
 
       <FileStatusBadge status={file.status} />

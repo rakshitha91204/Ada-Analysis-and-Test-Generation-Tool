@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RefreshCw, Download, Play, ChevronDown, BarChart2 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
@@ -9,7 +9,6 @@ import { TestStatsPanel } from '../shared/TestStatsPanel';
 import { EmptyState } from '../shared/EmptyState';
 import { Button } from '../shared/Button';
 import { Badge } from '../shared/Badge';
-import { useTestGenerator } from '../../hooks/useTestGenerator';
 import { TestTube } from 'lucide-react';
 
 const SkeletonCard: React.FC = () => (
@@ -22,8 +21,8 @@ const SkeletonCard: React.FC = () => (
 
 export const TestCasePanel: React.FC = () => {
   const { subprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
-  const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory, setCurrentTests } = useTestCaseStore();
-  const { generating, generateForSelected, generateForAll } = useTestGenerator();
+  const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory, setCurrentTests, generateTests } = useTestCaseStore();
+  const [generating, setGenerating] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const dragFrom = useRef<number | null>(null);
@@ -32,6 +31,25 @@ export const TestCasePanel: React.FC = () => {
 
   const selectedSub = subprograms.find((s) => s.id === selectedSubprogramId);
   const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId] || []) : [];
+
+  const generateForSelected = useCallback(() => {
+    if (!selectedSub) return;
+    setGenerating(true);
+    setTimeout(() => {
+      generateTests(selectedSub);
+      setGenerating(false);
+    }, 300);
+  }, [selectedSub, generateTests]);
+
+  const generateForAll = useCallback(() => {
+    setGenerating(true);
+    let delay = 0;
+    subprograms.forEach((s) => {
+      setTimeout(() => generateTests(s), delay);
+      delay += 80;
+    });
+    setTimeout(() => setGenerating(false), delay + 200);
+  }, [subprograms, generateTests]);
 
   useEffect(() => {
     if (selectedSubprogramId && !currentTestSets[selectedSubprogramId]?.length) {
