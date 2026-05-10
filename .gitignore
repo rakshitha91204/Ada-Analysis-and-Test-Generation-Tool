@@ -1,4 +1,7 @@
-# ── Frontend ──────────────────────────────────────────────────────────────────
+# ── ADA-Test-master (original messy source — superseded by backend/) ──────────
+ADA-Test-master/
+
+
 node_modules/
 frontend/node_modules/
 dist/
