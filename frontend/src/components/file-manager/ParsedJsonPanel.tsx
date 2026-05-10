@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useRef, useState } from 'react';
-import { Zap, TestTube, Copy, Check, Download, AlertCircle, Loader } from 'lucide-react';
+import { Zap, TestTube, Copy, Check, Download, AlertCircle, Loader, X } from 'lucide-react';
 import { useParseStore } from '../../store/useParseStore';
 import { useFileStore } from '../../store/useFileStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
@@ -26,7 +26,7 @@ interface ParsedSubprogramJson {
 }
 
 export const ParsedJsonPanel: React.FC = () => {
-  const { results, activeResultFileId, updateJsonText, setActiveResult } = useParseStore();
+  const { results, activeResultFileId, updateJsonText, setActiveResult, clearResult } = useParseStore();
   const { files } = useFileStore();
   const { generateTests, setCurrentTests } = useTestCaseStore();
   const { setSubprograms, subprograms } = useSubprogramStore();
@@ -44,6 +44,16 @@ export const ParsedJsonPanel: React.FC = () => {
     ? files.find((f) => f.id === activeResultFileId)
     : null;
   const isParsing = activeFile && (activeFile.status === 'parsing' || activeFile.status === 'pending');
+
+  // Remove a file's JSON result and switch to another if available
+  const handleRemoveResult = useCallback((fileId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearResult(fileId);
+    // Switch to another result if one exists
+    const remaining = Object.keys(results).filter((id) => id !== fileId);
+    setActiveResult(remaining.length > 0 ? remaining[remaining.length - 1] : null);
+    showToast('JSON result removed', 'info');
+  }, [results, clearResult, setActiveResult]);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
@@ -156,50 +166,110 @@ export const ParsedJsonPanel: React.FC = () => {
   if (allResults.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)' }}>
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+          style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)' }}>
           <Zap size={22} style={{ color: '#facc15' }} />
         </div>
         <div>
-          <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>No files parsed yet</p>
+          <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>No JSON yet</p>
           <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
-            Click any file in the Files tab<br />to open it — JSON appears automatically
+            Click any file in the <span style={{ color: '#facc15' }}>Files</span> tab<br />
+            to parse it and generate its JSON
           </p>
         </div>
       </div>
     );
   }
 
-  // File is selected but still being parsed
+  // File is selected and currently being parsed
   if (activeResultFileId && !activeResult && isParsing) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-        <Loader size={22} className="animate-spin" style={{ color: '#facc15' }} />
-        <div>
+      <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0a0a0a' }}>
+        {/* Tabs for already-parsed files */}
+        {allResults.length > 0 && (
+          <div className="flex overflow-x-auto flex-shrink-0" style={{ borderBottom: '1px solid #1c1c1c' }}>
+            {allResults.map((r) => (
+              <div key={r.fileId} className="flex items-center group">
+                <button
+                  onClick={() => setActiveResult(r.fileId)}
+                  className="px-3 py-2 text-[10px] font-mono whitespace-nowrap transition-colors border-b-2"
+                  style={{
+                    color: activeResultFileId === r.fileId ? '#facc15' : '#52525b',
+                    borderBottomColor: activeResultFileId === r.fileId ? '#facc15' : 'transparent',
+                    background: 'transparent',
+                  }}
+                >
+                  {r.fileName}
+                </button>
+                <button
+                  onClick={(e) => handleRemoveResult(r.fileId, e)}
+                  className="mr-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                  style={{ color: '#52525b' }}
+                  title="Remove JSON result"
+                >
+                  <X size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-col items-center justify-center flex-1 gap-3">
+          <Loader size={22} className="animate-spin" style={{ color: '#facc15' }} />
           <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>
             Analyzing {activeFile?.name ?? 'file'}...
           </p>
-          <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
-            Running libadalang analysis
-          </p>
+          <p className="text-xs font-mono" style={{ color: '#52525b' }}>Running libadalang analysis</p>
         </div>
       </div>
     );
   }
 
-  // File selected but not yet parsed (pending)
+  // File selected but not yet parsed — show prompt
   if (activeResultFileId && !activeResult) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)' }}>
-          <Zap size={22} style={{ color: '#facc15' }} />
-        </div>
-        <div>
-          <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>
-            {activeFile?.name ?? 'File'} not parsed yet
-          </p>
-          <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
-            Click <span style={{ color: '#facc15' }}>Parse</span> on the file row<br />to generate its JSON analysis
-          </p>
+      <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0a0a0a' }}>
+        {/* Tabs for already-parsed files */}
+        {allResults.length > 0 && (
+          <div className="flex overflow-x-auto flex-shrink-0" style={{ borderBottom: '1px solid #1c1c1c' }}>
+            {allResults.map((r) => (
+              <div key={r.fileId} className="flex items-center group">
+                <button
+                  onClick={() => setActiveResult(r.fileId)}
+                  className="px-3 py-2 text-[10px] font-mono whitespace-nowrap transition-colors border-b-2"
+                  style={{
+                    color: '#52525b',
+                    borderBottomColor: 'transparent',
+                    background: 'transparent',
+                  }}
+                >
+                  {r.fileName}
+                </button>
+                <button
+                  onClick={(e) => handleRemoveResult(r.fileId, e)}
+                  className="mr-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                  style={{ color: '#52525b' }}
+                  title="Remove JSON result"
+                >
+                  <X size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-col items-center justify-center flex-1 gap-4 p-6 text-center">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)' }}>
+            <Zap size={22} style={{ color: '#facc15' }} />
+          </div>
+          <div>
+            <p className="text-sm font-mono font-semibold" style={{ color: '#e4e4e7' }}>
+              {activeFile?.name ?? 'File'} — not parsed yet
+            </p>
+            <p className="text-xs font-mono mt-1" style={{ color: '#52525b' }}>
+              Click the file in the <span style={{ color: '#facc15' }}>Files</span> tab<br />
+              to parse it and generate its JSON
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -207,22 +277,32 @@ export const ParsedJsonPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0a0a0a' }}>
-      {/* File selector tabs */}
-      {allResults.length > 1 && (
+      {/* File selector tabs — each with a ✕ remove button */}
+      {allResults.length > 0 && (
         <div className="flex overflow-x-auto flex-shrink-0" style={{ borderBottom: '1px solid #1c1c1c' }}>
           {allResults.map((r) => (
-            <button
-              key={r.fileId}
-              onClick={() => setActiveResult(r.fileId)}
-              className="px-3 py-2 text-[10px] font-mono whitespace-nowrap transition-colors border-b-2"
-              style={{
-                color: activeResultFileId === r.fileId ? '#facc15' : '#52525b',
-                borderBottomColor: activeResultFileId === r.fileId ? '#facc15' : 'transparent',
-                background: 'transparent',
-              }}
-            >
-              {r.fileName}
-            </button>
+            <div key={r.fileId} className="flex items-center group flex-shrink-0">
+              <button
+                onClick={() => setActiveResult(r.fileId)}
+                className="px-3 py-2 text-[10px] font-mono whitespace-nowrap transition-colors border-b-2"
+                style={{
+                  color: activeResultFileId === r.fileId ? '#facc15' : '#52525b',
+                  borderBottomColor: activeResultFileId === r.fileId ? '#facc15' : 'transparent',
+                  background: 'transparent',
+                }}
+              >
+                {r.fileName}
+              </button>
+              {/* ✕ remove this file's JSON */}
+              <button
+                onClick={(e) => handleRemoveResult(r.fileId, e)}
+                className="mr-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                style={{ color: '#52525b' }}
+                title="Remove JSON result"
+              >
+                <X size={9} />
+              </button>
+            </div>
           ))}
         </div>
       )}

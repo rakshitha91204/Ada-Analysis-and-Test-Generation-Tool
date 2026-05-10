@@ -51,6 +51,7 @@ const EditorPage: React.FC = () => {
   const bottomPanel = useResizablePanel(bottomPanelHeight, 'vertical', setBottomPanelHeight, 100, 500);
 
   // Whenever the active file changes, sync the JSON panel to show that file's result
+  // (only if a result already exists — don't auto-parse)
   const { activeFileId } = useFileStore();
   useEffect(() => {
     if (activeFileId) {
@@ -104,7 +105,6 @@ const EditorPage: React.FC = () => {
     prevFilesLen.current = files.length;
   }, [files.length]); // eslint-disable-line
 
-  useFileParser();
   useKeyboardShortcuts(setCmdOpen);
 
   // ? key → shortcuts modal
