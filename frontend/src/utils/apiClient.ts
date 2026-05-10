@@ -3,7 +3,7 @@
  * ============
  * Thin wrapper around the Python FastAPI backend.
  *
- * The Vite dev-server proxies /api → http://localhost:8000, so all
+ * The Vite dev-server proxies /api → http://localhost:8001, so all
  * fetch calls use relative URLs and work without CORS issues in dev.
  * In production, point VITE_API_BASE_URL at the deployed server.
  */

@@ -67,8 +67,38 @@ export interface VariablesForFile {
   local_variables: Record<string, Record<string, { type: string }>>;
 }
 
+// ── New fields from fully-connected backend ───────────────────────────────────
+
+export interface BugEntry {
+  file: string;
+  line: number;
+  expression?: string;
+  subprogram?: string;
+  statement?: string;
+  note?: string;
+}
+
+export interface BugReport {
+  division_by_zero: BugEntry[];
+  uninitialized_variables: BugEntry[];
+  null_dereference: BugEntry[];
+  infinite_loops: BugEntry[];
+  unreachable_code: BugEntry[];
+}
+
+export interface HarnessEntry {
+  test_name: string;
+  original_subprogram: string;
+  is_function: boolean;
+  return_type: string | null;
+  parameters: string[];
+  template: string;
+}
+
 export interface AdaAnalysisResult {
   file_paths: string[];
+  // AST root kind per file (from Parser)
+  ast_info?: Record<string, string>;
   subprogram_index: Record<string, SubprogramEntry[]>;
   call_graph: Record<string, string[]>;
   global_read_write: Record<string, { read: string[]; write: string[] }>;
@@ -76,6 +106,17 @@ export interface AdaAnalysisResult {
   dead_code: string[];
   variables_info: Record<string, VariablesForFile>;
   control_flow_extractor: Record<string, Record<string, ControlFlowEntry>>;
+  loop_info?: Record<string, number>;
+  exceptions_info?: Record<string, number>;
+  concurrency_info?: { tasks: string[]; protected_objects: string[] };
+  // Protected objects from ProtectedAccessDetector
+  protected_objects?: string[];
+  logical_errors?: string[];
+  // Full bug report from BugDetector
+  bug_report?: BugReport;
+  performance_warnings?: string[];
+  test_harness_data?: Record<string, HarnessEntry[]>;
+  mock_stub_data?: Record<string, string>;
 }
 
 // ── Main entry ────────────────────────────────────────────────────────────────
@@ -100,6 +141,7 @@ export function analyzeAdaSource(
 
   return {
     file_paths: [filePath],
+    ast_info: { [filePath]: 'CompilationUnit' },
     subprogram_index: { [filePath]: subprogramIndex },
     call_graph: callGraph,
     global_read_write: { [filePath]: globalRW },
@@ -107,6 +149,21 @@ export function analyzeAdaSource(
     dead_code: deadCode,
     variables_info: { [filePath]: variablesInfo },
     control_flow_extractor: { [filePath]: controlFlow },
+    loop_info: {},
+    exceptions_info: {},
+    concurrency_info: { tasks: [], protected_objects: [] },
+    protected_objects: [],
+    logical_errors: [],
+    bug_report: {
+      division_by_zero: [],
+      uninitialized_variables: [],
+      null_dereference: [],
+      infinite_loops: [],
+      unreachable_code: [],
+    },
+    performance_warnings: [],
+    test_harness_data: {},
+    mock_stub_data: {},
   };
 }
 

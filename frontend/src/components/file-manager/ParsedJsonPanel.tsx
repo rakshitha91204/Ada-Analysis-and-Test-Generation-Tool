@@ -329,7 +329,22 @@ export const ParsedJsonPanel: React.FC = () => {
                     const globalVars = Object.values(d.variables_info?.[filePath]?.global_variables ?? {})
                       .reduce((a, v) => a + Object.keys(v).length, 0);
                     const dead = d.dead_code?.length ?? 0;
-                    return `${subs} subprograms · ${localVars} local vars · ${globalVars} global vars · ${dead} dead code`;
+                    const bugs = d.bug_report
+                      ? (d.bug_report.division_by_zero.length + d.bug_report.null_dereference.length +
+                         d.bug_report.infinite_loops.length + d.bug_report.unreachable_code.length)
+                      : 0;
+                    const loops = Object.values(d.loop_info ?? {}).reduce((a, v) => a + v, 0);
+                    const tasks = d.concurrency_info?.tasks?.length ?? 0;
+                    const parts = [
+                      `${subs} subprograms`,
+                      `${localVars} local vars`,
+                      `${globalVars} global vars`,
+                      `${dead} dead code`,
+                      bugs > 0 ? `${bugs} bugs` : null,
+                      loops > 0 ? `${loops} loops` : null,
+                      tasks > 0 ? `${tasks} tasks` : null,
+                    ].filter(Boolean);
+                    return parts.join(' · ');
                   } catch {
                     return 'Invalid JSON';
                   }

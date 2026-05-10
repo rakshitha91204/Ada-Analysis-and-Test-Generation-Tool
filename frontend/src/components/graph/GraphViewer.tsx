@@ -3,11 +3,54 @@ import { GitBranch, Copy } from 'lucide-react';
 import { GraphControls } from './GraphControls';
 import { EmptyState } from '../shared/EmptyState';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
+import { useParseStore } from '../../store/useParseStore';
+import { useFileStore } from '../../store/useFileStore';
 import { generateDOT } from '../../utils/dotGenerator';
 import { mockCallGraph } from '../../mocks/mockCallGraph';
+import { CallGraph } from '../../types/graph.types';
+
+/**
+ * Convert the backend call_graph format:
+ *   { "SubName": ["Callee1", "Callee2"], ... }
+ * into the CallGraph { nodes, edges } format used by generateDOT.
+ */
+function backendCallGraphToCallGraph(
+  callGraph: Record<string, string[]>,
+  subprogramIndex: Record<string, { name: string; return_type: string | null }[]>
+): CallGraph {
+  // Build a set of all known subprogram names and their kinds
+  const kindMap = new Map<string, 'procedure' | 'function'>();
+  for (const subs of Object.values(subprogramIndex)) {
+    for (const sub of subs) {
+      kindMap.set(sub.name, sub.return_type ? 'function' : 'procedure');
+    }
+  }
+
+  const nodeIds = new Set<string>();
+  const edges: CallGraph['edges'] = [];
+
+  for (const [caller, callees] of Object.entries(callGraph)) {
+    nodeIds.add(caller);
+    for (const callee of callees) {
+      nodeIds.add(callee);
+      edges.push({ from: caller, to: callee });
+    }
+  }
+
+  const nodes: CallGraph['nodes'] = Array.from(nodeIds).map((name) => ({
+    id: name,
+    label: name,
+    kind: kindMap.get(name) ?? 'procedure',
+  }));
+
+  return { nodes, edges };
+}
 
 export const GraphViewer: React.FC = () => {
-  const { selectedSubprogramId } = useSubprogramStore();
+  const { selectedSubprogramId, subprograms } = useSubprogramStore();
+  const { results, activeResultFileId } = useParseStore();
+  const { activeFileId } = useFileStore();
+
   const [svgContent, setSvgContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +61,34 @@ export const GraphViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+
+  // Resolve the call graph: prefer real backend data, fall back to mock
+  const activeResult = activeResultFileId
+    ? results[activeResultFileId]
+    : activeFileId
+    ? results[activeFileId]
+    : null;
+
+  const callGraph: CallGraph = (() => {
+    if (activeResult?.analysis?.call_graph) {
+      const cg = activeResult.analysis.call_graph;
+      const si = activeResult.analysis.subprogram_index ?? {};
+      // Flatten subprogram_index values for kind lookup
+      const flatSI: Record<string, { name: string; return_type: string | null }[]> = {};
+      for (const [file, subs] of Object.entries(si)) {
+        flatSI[file] = subs as { name: string; return_type: string | null }[];
+      }
+      const converted = backendCallGraphToCallGraph(cg, flatSI);
+      // Only use backend graph if it has nodes
+      if (converted.nodes.length > 0) return converted;
+    }
+    return mockCallGraph;
+  })();
+
+  // Highlight the selected subprogram node
+  const highlightId = selectedSubprogramId
+    ? (subprograms.find((s) => s.id === selectedSubprogramId)?.name ?? selectedSubprogramId)
+    : undefined;
 
   const renderGraph = useCallback(async (dot: string) => {
     setLoading(true);
@@ -35,10 +106,10 @@ export const GraphViewer: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const dot = generateDOT(mockCallGraph, selectedSubprogramId ?? undefined);
+    const dot = generateDOT(callGraph, highlightId);
     setDotSource(dot);
     renderGraph(dot);
-  }, [selectedSubprogramId, renderGraph]);
+  }, [activeResultFileId, activeFileId, selectedSubprogramId, renderGraph]); // eslint-disable-line
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -68,6 +139,16 @@ export const GraphViewer: React.FC = () => {
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+      {/* Source badge */}
+      {activeResult?.analysis?.call_graph && (
+        <div
+          className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded text-[9px] font-mono"
+          style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }}
+        >
+          libadalang ✓
+        </div>
+      )}
+
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="flex flex-col items-center gap-3">
@@ -101,7 +182,7 @@ export const GraphViewer: React.FC = () => {
         <EmptyState
           icon={<GitBranch size={28} />}
           heading="No graph to display"
-          subtext="Right-click a subprogram → Call Graph to visualize relationships."
+          subtext="Click a file to parse it — the call graph will appear here."
         />
       )}
 
