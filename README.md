@@ -1,5 +1,9 @@
 # Ada Analysis & Test Generation Tool
 
+> **Author:** Rakshitha  
+> **Repository:** https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool  
+> **License:** MIT © 2025 Rakshitha
+
 A full-stack web IDE for **Ada source code static analysis and automatic test case generation**.
 
 | Layer | Stack |

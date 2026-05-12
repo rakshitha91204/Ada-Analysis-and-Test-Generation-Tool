@@ -1,3 +1,9 @@
+/**
+ * Ada Analysis & Test Generation Tool
+ * Author: Rakshitha
+ * GitHub: https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool
+ * License: MIT © 2025 Rakshitha
+ */
 import React from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './router';
