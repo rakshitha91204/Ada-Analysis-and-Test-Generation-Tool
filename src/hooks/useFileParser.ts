@@ -50,17 +50,22 @@ function backendSubprogramsToStore(
     [];
 
   return entries.map((s) => {
-    const params = (s.parameters ?? []).map((p: string) => {
-      const parts = p.split(':').map((x) => x.trim());
-      const namePart = parts[0] ?? 'param';
-      const typePart = parts.slice(1).join(':').trim();
-      const modeMatch = /^(in\s+out|in|out)\s+(.+)$/i.exec(typePart);
-      return {
-        name: namePart,
-        paramType: modeMatch ? modeMatch[2].trim() : typePart || 'Unknown',
-        mode: (modeMatch ? modeMatch[1].toLowerCase().replace(/\s+/, ' ').trim() : 'in') as 'in' | 'out' | 'in out',
-      };
-    });
+    const params: Subprogram['parameters'] = [];
+    for (const raw of (s.parameters ?? [])) {
+      // Split on semicolons to handle legacy multi-param strings
+      const segments = raw.split(';').map((x: string) => x.trim()).filter(Boolean);
+      for (const segment of segments) {
+        const parts = segment.split(':').map((x: string) => x.trim());
+        const namePart = parts[0] ?? 'param';
+        const typePart = parts.slice(1).join(':').trim();
+        const modeMatch = /^(in\s+out|in|out)\s+(.+)$/i.exec(typePart);
+        params.push({
+          name: namePart,
+          paramType: modeMatch ? modeMatch[2].trim() : typePart || 'Unknown',
+          mode: (modeMatch ? modeMatch[1].toLowerCase().replace(/\s+/, ' ').trim() : 'in') as 'in' | 'out' | 'in out',
+        });
+      }
+    }
 
     return {
       id: `${fileId}_${s.name}_${s.start_line}`,

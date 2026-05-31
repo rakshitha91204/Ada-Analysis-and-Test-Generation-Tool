@@ -12,12 +12,24 @@ class SubprogramIndexer:
             subprograms = []
 
             for node in unit.root.findall(lal.SubpBody):
+                params = []
+                if node.f_subp_spec.f_subp_params:
+                    # Iterate individual ParamDecl nodes for clean per-param strings
+                    for param_decl in node.f_subp_spec.f_subp_params.f_params:
+                        # param_decl.text gives e.g. "Orida_In : in UINT16"
+                        # Normalise whitespace so the frontend parser works reliably
+                        raw = " ".join(param_decl.text.split())
+                        params.append(raw)
+
                 subprograms.append({
                     "name": node.f_subp_spec.f_subp_name.text,
-                    "parameters": [p.text for p in node.f_subp_spec.f_subp_params] if node.f_subp_spec.f_subp_params else [],
-                    "return_type": node.f_subp_spec.f_subp_returns.text if node.f_subp_spec.f_subp_returns else None,
+                    "parameters": params,
+                    "return_type": (
+                        node.f_subp_spec.f_subp_returns.text
+                        if node.f_subp_spec.f_subp_returns else None
+                    ),
                     "start_line": node.sloc_range.start.line,
-                    "end_line": node.sloc_range.end.line
+                    "end_line": node.sloc_range.end.line,
                 })
 
             result[unit.filename] = subprograms

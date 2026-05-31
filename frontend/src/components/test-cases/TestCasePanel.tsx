@@ -74,22 +74,27 @@ function buildStudioSubprogram(
   if (!entry) return null;
 
   // Parse raw parameter strings into structured params
+  // Backend format after fix: each entry is one param "Name : in Type"
+  // Legacy format (before fix): all params in one string separated by ";\n"
   const params: StudioParam[] = [];
   for (const raw of (entry.parameters || [])) {
-    // Format: "Name : in Type" or "Name : out Type" or "Name : in out Type"
-    const colonIdx = raw.indexOf(':');
-    if (colonIdx === -1) continue;
-    const namesPart = raw.slice(0, colonIdx).trim();
-    const rest = raw.slice(colonIdx + 1).trim();
-    let dir: 'in'|'out'|'in out' = 'in';
-    let typePart = rest;
-    if (/^in\s+out\b/i.test(rest))      { dir = 'in out'; typePart = rest.replace(/^in\s+out\s*/i, ''); }
-    else if (/^out\b/i.test(rest))       { dir = 'out';    typePart = rest.replace(/^out\s*/i, ''); }
-    else if (/^in\b/i.test(rest))        { dir = 'in';     typePart = rest.replace(/^in\s*/i, ''); }
-    const type = typePart.trim();
-    for (const pname of namesPart.split(',')) {
-      const n = pname.trim();
-      if (n) params.push({ name:n, dir, type, type_normalized:type.toLowerCase(), constraint:typeConstraint(type) });
+    // Normalise: collapse whitespace, split on semicolons for legacy multi-param strings
+    const segments = raw.split(';').map(s => s.trim()).filter(Boolean);
+    for (const segment of segments) {
+      const colonIdx = segment.indexOf(':');
+      if (colonIdx === -1) continue;
+      const namesPart = segment.slice(0, colonIdx).trim();
+      const rest = segment.slice(colonIdx + 1).trim();
+      let dir: 'in'|'out'|'in out' = 'in';
+      let typePart = rest;
+      if (/^in\s+out\b/i.test(rest))  { dir = 'in out'; typePart = rest.replace(/^in\s+out\s*/i, ''); }
+      else if (/^out\b/i.test(rest))  { dir = 'out';    typePart = rest.replace(/^out\s*/i, ''); }
+      else if (/^in\b/i.test(rest))   { dir = 'in';     typePart = rest.replace(/^in\s*/i, ''); }
+      const type = typePart.trim();
+      for (const pname of namesPart.split(',')) {
+        const n = pname.trim();
+        if (n) params.push({ name:n, dir, type, type_normalized:type.toLowerCase(), constraint:typeConstraint(type) });
+      }
     }
   }
 
