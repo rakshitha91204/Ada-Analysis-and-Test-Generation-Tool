@@ -478,11 +478,32 @@ export const TestCasePanel: React.FC = () => {
 
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
-  const activeResult = activeResultFileId ? results[activeResultFileId] : activeFileId ? results[activeFileId] : null;
+
+  // Resolve active analysis — try activeResultFileId, then activeFileId, then most recent
+  const activeResult = (() => {
+    if (activeResultFileId && results[activeResultFileId]) return results[activeResultFileId];
+    if (activeFileId && results[activeFileId]) return results[activeFileId];
+    const vals = Object.values(results);
+    return vals.length > 0 ? vals[vals.length - 1] : null;
+  })();
+
+  // Resolve subprogram name — from store first, then from subprogram_index by matching name
+  const resolvedSubpName = (() => {
+    if (selectedSub?.name) return selectedSub.name;
+    if (!selectedSubprogramId || !activeResult?.analysis?.subprogram_index) return '';
+    // The ID format is: fileId_SubpName_lineNum — extract the name part
+    // Try all subprograms in the index and find one whose name appears in the ID
+    for (const subs of Object.values(activeResult.analysis.subprogram_index)) {
+      for (const s of subs) {
+        if (selectedSubprogramId.includes(s.name)) return s.name;
+      }
+    }
+    return '';
+  })();
   const harnessTemplate = (() => {
-    if (!selectedSub || !activeResult?.analysis?.test_harness_data) return null;
+    if (!resolvedSubpName || !activeResult?.analysis?.test_harness_data) return null;
     const allEntries = Object.values(activeResult.analysis.test_harness_data).flat();
-    return allEntries.find(e => e.original_subprogram === selectedSub.name) ?? null;
+    return allEntries.find(e => e.original_subprogram === resolvedSubpName) ?? null;
   })();
   const [showHarness, setShowHarness] = useState(false);
 
@@ -504,8 +525,9 @@ export const TestCasePanel: React.FC = () => {
   }, [selectedSubprogramId]); // eslint-disable-line
 
   const handleSaveToHistory = () => {
-    if (!selectedSub) return;
-    saveToHistory({ id: crypto.randomUUID(), subprogramId: selectedSub.id, subprogramName: selectedSub.name, timestamp: new Date().toISOString(), testCases: tests });
+    const name = selectedSub?.name || resolvedSubpName;
+    if (!name || !selectedSubprogramId) return;
+    saveToHistory({ id: crypto.randomUUID(), subprogramId: selectedSubprogramId, subprogramName: name, timestamp: new Date().toISOString(), testCases: tests });
   };
 
   const handleDragStart = (idx: number) => { dragFrom.current = idx; setDraggingIdx(idx); };
@@ -550,7 +572,7 @@ export const TestCasePanel: React.FC = () => {
           ) : (
             <>
               {/* ── TEST STUDIO INPUTS — shown at top when subprogram selected ── */}
-              <TestStudioInputs subpName={selectedSub?.name ?? ''} analysis={activeResult?.analysis ?? null} />
+              <TestStudioInputs subpName={resolvedSubpName} analysis={activeResult?.analysis ?? null} />
 
               {/* Action bar */}
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -565,10 +587,10 @@ export const TestCasePanel: React.FC = () => {
                     <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-xl overflow-hidden"
                       style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)', minWidth: 210 }}>
                       {[
-                        { label: 'Download current as JSON', action: () => exportCurrent(selectedSubprogramId!, selectedSub?.name??'') },
+                        { label: 'Download current as JSON', action: () => exportCurrent(selectedSubprogramId!, resolvedSubpName||selectedSub?.name||'') },
                         { label: 'Download all history as JSON', action: exportAllHistory },
-                        { label: 'Download as .adb stub', action: () => exportCurrentAsADB(selectedSubprogramId!, selectedSub?.name??'') },
-                        { label: 'Export as CSV', action: () => exportAsCSV(tests, selectedSub?.name??'tests') },
+                        { label: 'Download as .adb stub', action: () => exportCurrentAsADB(selectedSubprogramId!, resolvedSubpName||selectedSub?.name||'') },
+                        { label: 'Export as CSV', action: () => exportAsCSV(tests, resolvedSubpName||selectedSub?.name||'tests') },
                       ].map(item => (
                         <button key={item.label} onClick={() => { item.action(); setExportOpen(false); }}
                           className="w-full text-left px-3 py-2 text-xs font-mono text-zinc-300 hover:bg-zinc-700/50 transition-colors">
