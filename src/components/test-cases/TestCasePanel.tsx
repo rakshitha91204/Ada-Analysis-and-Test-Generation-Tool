@@ -162,8 +162,8 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
   const outParams = studioSubp.params.filter(p => p.dir === 'out' || p.dir === 'in out');
 
   return (
-    <div className="border rounded-lg overflow-hidden flex-shrink-0 mb-3"
-      style={{ borderColor: 'rgba(250,204,21,0.2)', background: 'rgba(250,204,21,0.03)' }}>
+    <div className="ts-dark border rounded-lg overflow-hidden flex-shrink-0 mb-3"
+      style={{ borderColor: 'rgba(245,158,11,0.2)', background: 'rgba(245,158,11,0.03)' }}>
 
       {/* Header */}
       <div style={{ padding: '10px 14px 6px', borderBottom: '0.5px solid rgba(250,204,21,0.15)' }}>
@@ -197,26 +197,26 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
       {activeTab === 'inputs' && (
         <div style={{ padding: '12px 14px' }}>
           {inParams.length > 0 && <>
-            <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#71717a' }}>
+            <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
               in parameters — set test values
             </div>
             <div className="ts-input-grid" style={{ marginBottom: 12 }}>
               {inParams.map(p => (
-                <div key={p.name} className="ts-input-card" style={{ background: '#27272a', borderColor: '#3f3f46' }}>
+                <div key={p.name} className="ts-input-card">
                   <div className="ts-input-header">
-                    <span className="ts-input-dir" style={{ background: '#3f3f46', color: '#a1a1aa' }}>{p.dir}</span>
-                    <span className="ts-input-name" style={{ color: '#e4e4e7' }}>{p.name}</span>
+                    <span className="ts-input-dir">{p.dir}</span>
+                    <span className="ts-input-name">{p.name}</span>
                   </div>
-                  <div className="ts-input-type ts-mono" style={{ color: '#a1a1aa' }}>
+                  <div className="ts-input-type ts-mono">
                     {p.type} <CaseBadge type={p.type} />
                   </div>
-                  {typeLabel(p.type) && <div className="ts-input-range" style={{ color: '#71717a' }}>{typeLabel(p.type)}</div>}
+                  {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
                   {p.constraint.kind === 'boolean'
-                    ? <select className="ts-input-field" style={{ background: '#18181b', color: '#e4e4e7', borderColor: '#3f3f46' }}
+                    ? <select className="ts-input-field"
                         value={inputs[p.name]??'False'} onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}>
                         <option>False</option><option>True</option>
                       </select>
-                    : <input className="ts-input-field" style={{ background: '#18181b', color: '#e4e4e7', borderColor: '#3f3f46' }}
+                    : <input className="ts-input-field"
                         type={p.constraint.kind==='integer'?'number':'text'}
                         value={inputs[p.name]??typeDefault(p.type)}
                         onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}
@@ -227,17 +227,17 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
           </>}
 
           {outParams.length > 0 && <>
-            <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#71717a' }}>expected output values</div>
+            <div className="ts-section-label" style={{ padding: '0 0 8px' }}>expected output values</div>
             <div className="ts-input-grid" style={{ marginBottom: 12 }}>
               {outParams.map(p => (
-                <div key={p.name} className="ts-input-card ts-input-card-out" style={{ borderColor: '#166534', background: 'rgba(22,101,52,0.15)' }}>
+                <div key={p.name} className="ts-input-card ts-input-card-out">
                   <div className="ts-input-header">
                     <span className="ts-input-dir out">out</span>
-                    <span className="ts-input-name" style={{ color: '#e4e4e7' }}>{p.name}</span>
+                    <span className="ts-input-name">{p.name}</span>
                   </div>
-                  <div className="ts-input-type ts-mono" style={{ color: '#a1a1aa' }}>{p.type} <CaseBadge type={p.type} /></div>
-                  {typeLabel(p.type) && <div className="ts-input-range" style={{ color: '#71717a' }}>{typeLabel(p.type)}</div>}
-                  <input className="ts-input-field" style={{ background: '#18181b', color: '#e4e4e7', borderColor: '#166534' }}
+                  <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
+                  {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
+                  <input className="ts-input-field"
                     type="text" value={expected[p.name]??typeDefault(p.type)}
                     onChange={e => setExpected(ex => ({...ex,[p.name]:e.target.value}))}
                     placeholder="expected value" />
@@ -247,22 +247,16 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
           </>}
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '0.5px solid rgba(250,204,21,0.1)' }}>
-            <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}
-              style={{ background: '#d97706', borderColor: '#d97706', color: '#fff' }}>
+          <div className="ts-btn-row" style={{ paddingLeft: 0, paddingRight: 0 }}>
+            <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}>
               ▶ {running ? 'running...' : 'run test'}
             </button>
-            <button className="ts-btn" onClick={autoGen}
-              style={{ background: 'transparent', borderColor: '#3f3f46', color: '#a1a1aa' }}>
-              ✨ auto-fill
-            </button>
+            <button className="ts-btn" onClick={autoGen}>✨ auto-fill</button>
             <button className="ts-btn" onClick={() => {
               const blob = new Blob([JSON.stringify(inputs,null,2)],{type:'application/json'});
               const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
               a.download = `${studioSubp.name}_inputs.json`; a.click();
-            }} style={{ background: 'transparent', borderColor: '#3f3f46', color: '#a1a1aa' }}>
-              ⬇ export inputs
-            </button>
+            }}>⬇ export inputs</button>
           </div>
 
           {/* Result box */}
@@ -299,21 +293,21 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
       {/* VARIABLES TAB */}
       {activeTab === 'variables' && (
         <div style={{ padding: '12px 14px' }}>
-          <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#71717a' }}>
+          <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
             variables — declared type vs normalized
           </div>
           {studioSubp.variables.length === 0
             ? <div style={{ fontSize: 12, color: '#71717a', padding: '8px 0' }}>no variables extracted</div>
-            : <table className="ts-vars-table" style={{ color: '#a1a1aa' }}>
+            : <table className="ts-vars-table">
                 <thead>
-                  <tr style={{ color: '#71717a' }}>
+                  <tr>
                     <th>name</th><th>declared type</th><th>normalized</th><th>scope</th><th>constraint</th>
                   </tr>
                 </thead>
                 <tbody>
                   {studioSubp.variables.map((v,i) => (
                     <tr key={i}>
-                      <td className="ts-mono" style={{ color: '#e4e4e7' }}>{v.name}</td>
+                      <td className="ts-mono">{v.name}</td>
                       <td className="ts-mono">{v.type} <CaseBadge type={v.type} /></td>
                       <td className="ts-mono" style={{ color: '#4ade80' }}>{v.type_normalized}</td>
                       <td><span className={`ts-scope-pill ts-scope-${v.scope}`}>{v.scope}</span></td>

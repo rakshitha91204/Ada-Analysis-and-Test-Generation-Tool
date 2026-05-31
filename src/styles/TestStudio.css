@@ -250,3 +250,145 @@
 .ts-back-btn:hover { background: #f0efe9; color: #1a1a1a; }
 
 .ts-mono { font-family: "JetBrains Mono", monospace; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   Applied when TestStudio is embedded inside the dark IDE (TestCasePanel).
+   Wrap the component root with className="ts-dark" to activate.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ts-dark {
+  color: #e4e4e7;
+  background: transparent;
+}
+
+/* Badges — readable on dark bg */
+.ts-dark .ts-badge-caps  { background: rgba(99,102,241,0.2);  color: #a5b4fc; }
+.ts-dark .ts-badge-lower { background: rgba(34,197,94,0.15);  color: #4ade80; }
+.ts-dark .ts-badge-orig  { background: rgba(161,161,170,0.15); color: #a1a1aa; }
+.ts-dark .ts-badge-dead  { background: rgba(239,68,68,0.2);   color: #f87171; }
+
+/* Input cards */
+.ts-dark .ts-input-card {
+  background: #27272a;
+  border-color: #3f3f46;
+}
+.ts-dark .ts-input-card-out {
+  background: rgba(22,101,52,0.2);
+  border-color: #166534;
+}
+.ts-dark .ts-input-name  { color: #e4e4e7; }
+.ts-dark .ts-input-type  { color: #a1a1aa; }
+.ts-dark .ts-input-range { color: #71717a; }
+.ts-dark .ts-input-dir   { background: #3f3f46; color: #a1a1aa; }
+.ts-dark .ts-input-dir.out { background: rgba(22,101,52,0.3); color: #4ade80; }
+
+/* Input fields */
+.ts-dark .ts-input-field {
+  background: #18181b;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+.ts-dark .ts-input-field:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+.ts-dark select.ts-input-field option { background: #18181b; }
+
+/* Section label */
+.ts-dark .ts-section-label { color: #71717a; }
+
+/* Buttons */
+.ts-dark .ts-btn {
+  background: transparent;
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+.ts-dark .ts-btn:hover { background: #27272a; color: #e4e4e7; }
+.ts-dark .ts-btn-primary {
+  background: #d97706;
+  border-color: #d97706;
+  color: #fff;
+}
+.ts-dark .ts-btn-primary:hover { background: #b45309; }
+.ts-dark .ts-btn:disabled { opacity: 0.4; }
+
+/* Result boxes */
+.ts-dark .ts-result-pass  { background: rgba(22,101,52,0.2);  border-color: #166534; color: #4ade80; }
+.ts-dark .ts-result-fail  { background: rgba(153,27,27,0.2);  border-color: #991b1b; color: #f87171; }
+.ts-dark .ts-result-error { background: rgba(120,53,15,0.2);  border-color: #92400e; color: #fbbf24; }
+.ts-dark .ts-result-expected { color: #71717a; }
+.ts-dark .ts-result-actual.ok  { color: #4ade80; }
+.ts-dark .ts-result-actual.bad { color: #f87171; }
+.ts-dark .ts-result-types { color: #52525b; }
+
+/* Variables table */
+.ts-dark .ts-vars-table th {
+  color: #71717a;
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+.ts-dark .ts-vars-table td {
+  color: #a1a1aa;
+  border-bottom-color: rgba(255,255,255,0.05);
+}
+.ts-dark .ts-vars-table tr:hover td { background: rgba(255,255,255,0.03); }
+
+/* Scope pills */
+.ts-dark .ts-scope-local    { background: rgba(161,161,170,0.15); color: #a1a1aa; }
+.ts-dark .ts-scope-global   { background: rgba(99,102,241,0.2);   color: #a5b4fc; }
+.ts-dark .ts-scope-constant { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+
+/* History rows */
+.ts-dark .ts-history-row {
+  background: #1c1c1e;
+  border-color: rgba(255,255,255,0.06);
+  color: #a1a1aa;
+}
+
+/* Violation list */
+.ts-dark .ts-violation-list { color: #fbbf24; }
+
+/* Status dot — same colors work on dark */
+/* Stat pills — keep same, readable on both */
+.ts-dark .ts-stat-pill.pass { background: rgba(22,101,52,0.25);  color: #4ade80; }
+.ts-dark .ts-stat-pill.fail { background: rgba(153,27,27,0.25);  color: #f87171; }
+.ts-dark .ts-stat-pill.pend { background: rgba(120,53,15,0.25);  color: #fbbf24; }
+
+/* Path input */
+.ts-dark .ts-path-input {
+  background: #18181b;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+.ts-dark .ts-path-input::placeholder { color: #52525b; }
+
+/* Status bar */
+.ts-dark .ts-status-bar {
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+  border-bottom-color: rgba(99,102,241,0.2);
+}
+.ts-dark .ts-status-close { color: #a5b4fc; }
+
+/* Panel head */
+.ts-dark .ts-panel-head { color: #52525b; }
+
+/* Sidebar items */
+.ts-dark .ts-sidebar-item { color: #a1a1aa; }
+.ts-dark .ts-sidebar-item:hover { background: rgba(255,255,255,0.04); }
+.ts-dark .ts-sidebar-item.active {
+  border-left-color: #f59e0b;
+  background: rgba(245,158,11,0.06);
+  color: #e4e4e7;
+}
+
+/* Result items in sidebar */
+.ts-dark .ts-result-item { border-bottom-color: rgba(255,255,255,0.06); }
+.ts-dark .ts-result-item:hover { background: rgba(255,255,255,0.04); }
+
+/* Test head */
+.ts-dark .ts-test-title { color: #e4e4e7; }
+.ts-dark .ts-test-meta  { color: #71717a; }
+
+/* Btn row border */
+.ts-dark .ts-btn-row { border-top-color: rgba(255,255,255,0.08); }
