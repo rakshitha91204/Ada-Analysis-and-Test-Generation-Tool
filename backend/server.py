@@ -181,10 +181,10 @@ def _validate_value(value: str, type_str: str) -> tuple[bool, str]:
 
 
 def _get_subprogram_from_session(name: str) -> dict | None:
-    for fdata in _analysis_result.get("subprogram_index", {}).values():
-        for s in fdata:
-            if s["name"] == name:
-                return s
+    """Return enriched subprogram dict (with structured params) by name."""
+    for s in _build_enriched_subprograms():
+        if s["name"] == name:
+            return s
     return None
 
 
