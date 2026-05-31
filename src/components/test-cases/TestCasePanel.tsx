@@ -189,47 +189,41 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const [history,    setHistory]    = useState<TestRunResult[]>([]);
   const [activeTab,  setActiveTab]  = useState<'inputs'|'variables'|'history'>('inputs');
 
-  // Build enriched subprogram directly from the local analysis result
+  // Build enriched subprogram directly from the local analysis result.
+  // Also auto-switches to variables tab when subprogram has no parameters.
   useEffect(() => {
     if (!subpName || !analysis) { setStudioSubp(null); return; }
 
+    const applySubp = (found: StudioSubprogram) => {
+      setStudioSubp(found);
+      const inPs = found.params.filter(p => p.dir === 'in' || p.dir === 'in out');
+      const outPs = found.params.filter(p => p.dir === 'out' || p.dir === 'in out');
+      const hasNoParams = inPs.length === 0 && outPs.length === 0;
+
+      const init: Record<string,string> = {};
+      inPs.forEach(p => { init[p.name] = typeDefault(p.type); });
+      setInputs(init);
+
+      const exp: Record<string,string> = {};
+      outPs.forEach(p => { exp[p.name] = typeDefault(p.type); });
+      setExpected(exp);
+
+      setLastResult(null);
+      // Auto-switch to variables tab if no parameters
+      setActiveTab(hasNoParams ? 'variables' : 'inputs');
+    };
+
     // First try: build from local parse store data (works for file-upload flow)
     const local = buildStudioSubprogram(subpName, analysis);
-    if (local) {
-      setStudioSubp(local);
-      const init: Record<string,string> = {};
-      local.params.filter(p => p.dir === 'in' || p.dir === 'in out')
-        .forEach(p => { init[p.name] = typeDefault(p.type); });
-      setInputs(init);
-      const exp: Record<string,string> = {};
-      local.params.filter(p => p.dir === 'out' || p.dir === 'in out')
-        .forEach(p => { exp[p.name] = typeDefault(p.type); });
-      setExpected(exp);
-      setLastResult(null);
-      setActiveTab('inputs');
-      return;
-    }
+    if (local) { applySubp(local); return; }
 
     // Fallback: try backend /api/subprograms (works for path-based Test Studio flow)
     studioGet<StudioSubprogram[]>('/subprograms').then(list => {
       const found = list.find(s => s.name === subpName);
-      if (found) {
-        setStudioSubp(found);
-        const init: Record<string,string> = {};
-        found.params.filter(p => p.dir === 'in' || p.dir === 'in out')
-          .forEach(p => { init[p.name] = typeDefault(p.type); });
-        setInputs(init);
-        const exp: Record<string,string> = {};
-        found.params.filter(p => p.dir === 'out' || p.dir === 'in out')
-          .forEach(p => { exp[p.name] = typeDefault(p.type); });
-        setExpected(exp);
-        setLastResult(null);
-        setActiveTab('inputs');
-      } else {
-        setStudioSubp(null);
-      }
+      if (found) applySubp(found);
+      else setStudioSubp(null);
     });
-  }, [subpName, analysis]);
+  }, [subpName, analysis]); // eslint-disable-line
 
   const autoGen = () => {
     if (!studioSubp) return;
@@ -266,11 +260,6 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const inParams  = studioSubp.params.filter(p => p.dir === 'in' || p.dir === 'in out');
   const outParams = studioSubp.params.filter(p => p.dir === 'out' || p.dir === 'in out');
   const hasNoParams = inParams.length === 0 && outParams.length === 0;
-
-  // Auto-switch to variables tab if subprogram has no parameters
-  useEffect(() => {
-    if (hasNoParams && studioSubp) setActiveTab('variables');
-  }, [studioSubp?.name, hasNoParams]); // eslint-disable-line
 
   return (
     <div className="ts-dark border rounded-lg overflow-hidden flex-shrink-0 mb-3"
