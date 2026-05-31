@@ -22,27 +22,37 @@ A full-stack web IDE for **Ada source code static analysis and automatic test ca
 > **Requires GNAT Studio 2026** (includes Python 3.13 + libadalang).  
 > Download: https://github.com/AdaCore/gnatstudio/releases/latest
 
+Open a terminal and run these commands one at a time:
+
+**PowerShell:**
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**Command Prompt (cmd):**
 ```bat
-cd backend
+cd D:\ada\backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Backend runs at → **http://localhost:8001**
-
-**Or use the one-click script (Windows):**
-
+**Or use the one-click script (opens its own window):**
 ```bat
-cd backend
+cd D:\ada\backend
 start_server.bat
 ```
+
+Backend runs at → **http://localhost:8001**
 
 ---
 
 ### Terminal 2 — Start the frontend
 
-Run from the **project root** (same folder as `package.json`):
+Open a **second** terminal at the project root (`D:\ada`):
 
+**PowerShell or cmd:**
 ```bash
+cd D:\ada
 npm install
 npm run dev
 ```
@@ -55,10 +65,8 @@ Frontend runs at → **http://localhost:5173**
 
 ### Verify both are running
 
-Open a third terminal and run:
-
-```bat
-curl http://localhost:8001/health
+```powershell
+Invoke-RestMethod http://localhost:8001/health
 ```
 
 Expected response:
@@ -185,6 +193,12 @@ Run the `.exe` installer — installs to `C:\GNATSTUDIO\` by default.
 
 **Step 2 — Verify libadalang is available**
 
+**PowerShell:**
+```powershell
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -c "import libadalang; print('libadalang OK')"
+```
+
+**cmd:**
 ```bat
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -c "import libadalang; print('libadalang OK')"
 ```
@@ -193,15 +207,29 @@ Expected: `libadalang OK`
 
 **Step 3 — Install Python dependencies**
 
+**PowerShell:**
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9
+```
+
+**cmd:**
 ```bat
-cd backend
+cd D:\ada\backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9
 ```
 
 **Step 4 — Start the server**
 
+**PowerShell:**
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**cmd:**
 ```bat
-cd backend
+cd D:\ada\backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
@@ -539,16 +567,24 @@ useFileParser.parseFile(file)
 
 ### Run both servers (copy-paste ready)
 
-**Terminal 1 — Backend:**
+**Terminal 1 — Backend (PowerShell):**
+
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**Terminal 1 — Backend (cmd):**
 
 ```bat
-cd backend
+cd D:\ada\backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-**Terminal 2 — Frontend:**
+**Terminal 2 — Frontend (PowerShell or cmd):**
 
 ```bash
+cd D:\ada
 npm run dev
 ```
 
@@ -562,8 +598,15 @@ npm run preview  # Preview build  →  http://localhost:4173
 
 ### Run the CLI analyzer (no server needed)
 
+**PowerShell:**
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" runner.py
+```
+
+**cmd:**
 ```bat
-cd backend
+cd D:\ada\backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" runner.py
 ```
 
