@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Diamond, ArrowRight, Zap } from 'lucide-react';
+import { Diamond, ArrowRight, Zap, FlaskConical } from 'lucide-react';
 import { FileDropzone } from '../components/upload/FileDropzone';
 import { FilePreviewCard } from '../components/upload/FilePreviewCard';
 import { FolderPreviewCard } from '../components/upload/FolderPreviewCard';
@@ -101,6 +101,17 @@ const UploadPage: React.FC = () => {
           icon={<ArrowRight size={16} />}
         >
           Continue to Editor
+        </Button>
+
+        {/* Test Studio button */}
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full justify-center"
+          onClick={() => navigate('/test-studio')}
+          icon={<FlaskConical size={16} />}
+        >
+          Open Test Studio
         </Button>
 
         {/* Demo hint */}

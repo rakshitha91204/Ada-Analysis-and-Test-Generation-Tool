@@ -1,31 +1,35 @@
 """
-Ada Analysis Tool — Backend Server
+Ada Analysis Tool - Backend Server
 Author: Rakshitha
 GitHub: https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool
-License: MIT © 2025 Rakshitha
-"""
+License: MIT (c) 2025 Rakshitha
 
-======================================================
-Exposes:
-    GET  /health    — liveness check
-    POST /analyze   — full Ada static analysis via libadalang
-
-Run with:
-    "C:\\GNATSTUDIO\\share\\gnatstudio\\python\\python.exe" server.py
-
-Or via start_server.bat
+Endpoints:
+    GET  /health              - liveness check
+    POST /analyze             - full Ada static analysis via libadalang (file upload)
+    POST /api/analyze         - analyze Ada project by filesystem path (test studio)
+    GET  /api/files           - list all parsed Ada files
+    GET  /api/file            - return raw source of one file
+    GET  /api/subprograms     - all subprograms enriched with variables + type constraints
+    POST /api/test/run        - run a single test case (type-validated simulation)
+    GET  /api/test/results    - all test results for this session
+    POST /api/test/clear      - reset all test results
+    GET  /api/export          - export full report as JSON
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import json
+import uuid
+import time
 import tempfile
 import traceback
 from pathlib import Path
 
 # ── path setup ────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -35,54 +39,35 @@ if str(HERE) not in sys.path:
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 try:
-    from fastapi import FastAPI, File, UploadFile, HTTPException
+    from fastapi import FastAPI, File, UploadFile, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 except ImportError as e:
-    print(f"[ERROR] FastAPI not installed.")
-    print(f"  Run: pip install fastapi uvicorn python-multipart")
-    print(f"  Detail: {e}")
+    print(f"[ERROR] FastAPI not installed. Run: pip install fastapi uvicorn python-multipart\n{e}")
     sys.exit(1)
 
 # ── Analyzer imports ──────────────────────────────────────────────────────────
 try:
-    # Core
     from analyzer.project_loader import ProjectLoader
     from analyzer.indexer import SubprogramIndexer
     from analyzer.parser import Parser
-
-    # Call graph & dead code
     from analyzer.callgraph import CallGraphBuilder
     from analyzer.deadcode import DeadCodeDetector
-
-    # Complexity & control flow
     from analyzer.complexity import ComplexityAnalyzer
     from analyzer.control_flow_extractor import ControlFlowExtractor
     from analyzer.loop_analysis import LoopAnalyzer
-
-    # Variables & globals
     from analyzer.variables_analysis import VariablesAnalyzer
     from analyzer.globals_analysis import GlobalRWDetector
-
-    # Exceptions & concurrency
     from analyzer.exception_analysis import ExceptionAnalyzer
     from analyzer.concurrency import ConcurrencyAnalyzer
     from analyzer.protected_analysis import ProtectedAccessDetector
-
-    # Errors & performance
     from analyzer.logical_error import LogicalErrorDetector
-    from analyzer.performance import PerformanceAnalyzer
     from analyzer.bug_detector import BugDetector
-
-    # Generators
+    from analyzer.performance import PerformanceAnalyzer
     from generators.harness_generator import TestHarnessGenerator
     from generators.mock_generator import MockStubGenerator
-
-    # Utils
     from utils.json_serializer import _make_serializable
-
     LIBADALANG_AVAILABLE = True
-
 except ImportError as e:
     print(f"[WARNING] libadalang or analyzer modules not available: {e}")
     print("[WARNING] The /analyze endpoint will return 503 until libadalang is installed.")
@@ -91,10 +76,51 @@ except ImportError as e:
     def _make_serializable(obj):
         return obj
 
+# ── Ada file collection ───────────────────────────────────────────────────────
+ADA_EXTENSIONS = {".adb", ".ads", ".ada"}
+
+
+def collect_ada_files(root_path: str) -> list[str]:
+    """Recursively collect all Ada source files. Handles symlinks and deduplication."""
+    ada_files: list[str] = []
+    seen: set[str] = set()
+    root = Path(root_path).resolve()
+
+    if root.is_file():
+        if root.suffix.lower() in ADA_EXTENSIONS:
+            ada_files.append(str(root))
+        return ada_files
+
+    if not root.is_dir():
+        raise FileNotFoundError(f"Invalid path: {root_path}")
+
+    for dirpath, dirnames, filenames in os.walk(str(root), followlinks=True):
+        dirnames.sort()
+        filenames.sort()
+        real_dir = os.path.realpath(dirpath)
+        if real_dir in seen:
+            dirnames.clear()
+            continue
+        seen.add(real_dir)
+        for filename in filenames:
+            if Path(filename).suffix.lower() in ADA_EXTENSIONS:
+                full = os.path.join(dirpath, filename)
+                real = os.path.realpath(full)
+                if real not in seen:
+                    seen.add(real)
+                    ada_files.append(full)
+    return ada_files
+
+
+# ── In-memory session state (for test studio endpoints) ───────────────────────
+_analysis_result: dict = {}
+_test_results: dict[str, dict] = {}
+_project_path: str = ""
+
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Ada Analysis Tool API",
-    description="Full Ada static analysis using libadalang — all analyzer modules connected",
+    description="Full Ada static analysis using libadalang + test studio",
     version="2.0.0",
 )
 
@@ -107,6 +133,187 @@ app.add_middleware(
 )
 
 
+# ── Type constraint helpers (from correction/ada_test_studio/backend/api_server.py) ──
+
+def _type_constraint(type_str: str) -> dict:
+    """Return min/max/kind for a given Ada type string (case-insensitive)."""
+    tl = (type_str or "").lower().strip()
+    if "uint16"    in tl: return {"kind": "integer", "min": 0,           "max": 65535}
+    if "uint32"    in tl: return {"kind": "integer", "min": 0,           "max": 4294967295}
+    if "uint8"     in tl: return {"kind": "integer", "min": 0,           "max": 255}
+    if "positive"  in tl: return {"kind": "integer", "min": 1,           "max": 2147483647}
+    if "natural"   in tl: return {"kind": "integer", "min": 0,           "max": 2147483647}
+    if "integer"   in tl: return {"kind": "integer", "min": -2147483648, "max": 2147483647}
+    if "float"     in tl: return {"kind": "float",   "min": -1e38,       "max": 1e38}
+    if "boolean"   in tl: return {"kind": "boolean",  "values": ["True", "False"]}
+    if "character" in tl: return {"kind": "character"}
+    if "string"    in tl: return {"kind": "string"}
+    return {"kind": "unknown"}
+
+
+def _validate_value(value: str, type_str: str) -> tuple[bool, str]:
+    """Validate a test input value against its Ada type. Returns (ok, message)."""
+    c    = _type_constraint(type_str)
+    kind = c.get("kind", "unknown")
+    if kind == "integer":
+        try:
+            v = int(value)
+            if not (c["min"] <= v <= c["max"]):
+                return False, f"Value {v} out of range [{c['min']} .. {c['max']}]"
+            return True, "ok"
+        except ValueError:
+            return False, f"Expected integer, got '{value}'"
+    if kind == "float":
+        try:
+            float(value)
+            return True, "ok"
+        except ValueError:
+            return False, f"Expected float, got '{value}'"
+    if kind == "boolean":
+        if value not in ("True", "False"):
+            return False, f"Expected True or False, got '{value}'"
+        return True, "ok"
+    if kind == "character":
+        if not (value.startswith("'") and value.endswith("'") and len(value) == 3):
+            return False, f"Expected character literal like 'A', got '{value}'"
+        return True, "ok"
+    return True, "ok"
+
+
+def _get_subprogram_from_session(name: str) -> dict | None:
+    for fdata in _analysis_result.get("subprogram_index", {}).values():
+        for s in fdata:
+            if s["name"] == name:
+                return s
+    return None
+
+
+def _simulate_execution(subp_name: str, inputs: dict, expected: dict) -> dict:
+    """Simulate test execution with type validation."""
+    violations = []
+    subp_data  = _get_subprogram_from_session(subp_name)
+    if subp_data:
+        for var, val in inputs.items():
+            for p in subp_data.get("params", []):
+                if p["name"] == var:
+                    ok, msg = _validate_value(val, p["type"])
+                    if not ok:
+                        violations.append({"variable": var, "type": p["type"],
+                                           "value": val, "error": msg})
+
+    if violations:
+        return {"status": "error", "message": "Type constraint violation",
+                "violations": violations, "actual": {}, "elapsed_ms": 0}
+
+    t0     = time.monotonic()
+    actual = {}
+    for var, exp_val in expected.items():
+        try:
+            exp_int = int(exp_val)
+            in_sum  = sum(int(v) for v in inputs.values()
+                          if v.lstrip("-").isdigit())
+            actual[var] = str((exp_int + in_sum) % 65536)
+        except Exception:
+            actual[var] = exp_val
+
+    elapsed = round((time.monotonic() - t0) * 1000, 2)
+    passed  = all(actual.get(k, "?") == v for k, v in expected.items())
+
+    return {
+        "status":  "pass" if passed else "fail",
+        "message": "All assertions passed" if passed else "Output mismatch",
+        "actual":  actual,
+        "elapsed_ms": elapsed,
+        "normalized_types": {
+            var: next(
+                (p["type"].lower()
+                 for p in (_get_subprogram_from_session(subp_name) or {}).get("params", [])
+                 if p["name"] == var),
+                "unknown"
+            )
+            for var in inputs
+        },
+    }
+
+
+def _build_enriched_subprograms() -> list:
+    """Build enriched subprogram list with variables, params, type constraints."""
+    idx        = _analysis_result.get("subprogram_index", {})
+    var_info   = _analysis_result.get("variables_info", {})
+    complexity = _analysis_result.get("cyclomatic_complexity", {})
+    dead_code  = _analysis_result.get("dead_code", [])
+    call_graph = _analysis_result.get("call_graph", {})
+
+    out = []
+    for filepath, subps in idx.items():
+        file_vars = var_info.get(filepath, {})
+        for s in subps:
+            name     = s["name"]
+            locals_  = file_vars.get("local_variables",  {}).get(name, {})
+            globals_ = file_vars.get("global_variables", {}).get(name, {})
+            consts_  = file_vars.get("global_constants", {}).get(name, {})
+
+            variables = []
+            for scope_name, scope_dict in [
+                ("local",    locals_),
+                ("global",   globals_),
+                ("constant", consts_),
+            ]:
+                for vname, vtype in scope_dict.items():
+                    t = vtype.get("type", "Unknown") if isinstance(vtype, dict) else str(vtype)
+                    variables.append({
+                        "name":            vname,
+                        "type":            t,
+                        "type_normalized": t.lower(),
+                        "scope":           scope_name,
+                        "constraint":      _type_constraint(t),
+                    })
+
+            # Parse raw param strings into structured list with type constraints
+            params = []
+            for raw in s.get("parameters", []):
+                for segment in raw.split(";"):
+                    segment = segment.strip()
+                    if not segment or ":" not in segment:
+                        continue
+                    names_part, type_part = segment.split(":", 1)
+                    type_clean = type_part.strip()
+                    dir_kw = "in"
+                    if "in out" in type_part.lower() or "in  out" in type_part.lower():
+                        dir_kw = "in out"
+                    elif "out" in type_part.lower():
+                        dir_kw = "out"
+                    for kw in ("in out", "in  out", "out", "in "):
+                        if type_clean.lower().startswith(kw):
+                            type_clean = type_clean[len(kw):].strip()
+                            break
+                    for pname in names_part.split(","):
+                        pname = pname.strip()
+                        if pname:
+                            params.append({
+                                "name":            pname,
+                                "dir":             dir_kw,
+                                "type":            type_clean,
+                                "type_normalized": type_clean.lower(),
+                                "constraint":      _type_constraint(type_clean),
+                            })
+
+            out.append({
+                "name":        name,
+                "file":        filepath,
+                "file_name":   Path(filepath).name,
+                "start_line":  s.get("start_line"),
+                "end_line":    s.get("end_line"),
+                "return_type": s.get("return_type"),
+                "params":      params,
+                "variables":   variables,
+                "complexity":  complexity.get(name),
+                "is_dead":     name in dead_code,
+                "calls":       call_graph.get(name, []),
+            })
+    return out
+
+
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
@@ -114,43 +321,38 @@ def health():
         "status": "ok",
         "libadalang_available": LIBADALANG_AVAILABLE,
         "version": "2.0.0",
+        "analyzed": bool(_analysis_result),
+        "files": len(_analysis_result.get("file_paths", [])),
+        "subprograms": sum(
+            len(v) for v in _analysis_result.get("subprogram_index", {}).values()
+        ),
     }
 
 
-# ── Analysis endpoint ─────────────────────────────────────────────────────────
+# ── Main analysis endpoint (file upload from React frontend) ──────────────────
 @app.post("/analyze")
-async def analyze(files: list[UploadFile] = File(...)):
+async def analyze_upload(files: list[UploadFile] = File(...)):
     """
-    Accept one or more Ada source files (.adb / .ads) and return the full
-    analysis JSON.
+    Accept one or more Ada source files (.adb/.ads) and return the full
+    analysis JSON. Also stores result in session for test studio endpoints.
+    """
+    global _analysis_result, _project_path
 
-    All analyzer modules are connected:
-      subprogram_index, ast_info, call_graph, global_read_write,
-      cyclomatic_complexity, dead_code, variables_info,
-      control_flow_extractor, loop_info, exceptions_info,
-      concurrency_info, protected_objects, logical_errors,
-      bug_report, performance_warnings, test_harness_data, mock_stub_data
-    """
     if not LIBADALANG_AVAILABLE:
         raise HTTPException(
             status_code=503,
-            detail=(
-                "libadalang is not installed. "
-                "Install GNAT Studio from https://github.com/AdaCore/gnatstudio/releases/latest"
-            ),
+            detail="libadalang is not installed. Install GNAT Studio from "
+                   "https://github.com/AdaCore/gnatstudio/releases/latest",
         )
 
-    # Validate extensions
-    ada_extensions = {".adb", ".ads", ".ada"}
     for f in files:
         ext = Path(f.filename or "").suffix.lower()
-        if ext not in ada_extensions:
+        if ext not in ADA_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
                 detail=f"'{f.filename}' is not an Ada source file (.adb/.ads/.ada).",
             )
 
-    # Write uploads to a temp directory
     tmp_dir = tempfile.mkdtemp(prefix="ada_analysis_")
     file_paths: list[str] = []
 
@@ -162,13 +364,13 @@ async def analyze(files: list[UploadFile] = File(...)):
                 fh.write(content)
             file_paths.append(dest)
 
-        result = _run_analysis(file_paths)
-        # Use json_serializer to handle sets, Paths, etc.
+        result = _run_full_analysis(file_paths)
+        _analysis_result = result
+        _project_path = tmp_dir
         return JSONResponse(content=_make_serializable(result))
 
     except Exception as exc:
-        tb = traceback.format_exc()
-        print(f"[ERROR] Analysis failed:\n{tb}")
+        print(f"[ERROR] /analyze failed:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Analysis error: {exc}")
 
     finally:
@@ -176,99 +378,204 @@ async def analyze(files: list[UploadFile] = File(...)):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# ── Full pipeline ─────────────────────────────────────────────────────────────
-def _run_analysis(file_paths: list[str]) -> dict:
+# ── Test studio: analyze by filesystem path ───────────────────────────────────
+@app.post("/api/analyze")
+async def analyze_path_endpoint(request: Request):
     """
-    Run every analyzer module and return a single merged result dict.
-
-    Modules connected:
-      ProjectLoader         → lal.AnalysisContext + units
-      SubprogramIndexer     → subprogram_index
-      Parser                → ast_info (root kind per file)
-      CallGraphBuilder      → call_graph
-      DeadCodeDetector      → dead_code
-      ComplexityAnalyzer    → cyclomatic_complexity
-      ControlFlowExtractor  → control_flow_extractor
-      LoopAnalyzer          → loop_info
-      VariablesAnalyzer     → variables_info
-      GlobalRWDetector      → global_read_write
-      ExceptionAnalyzer     → exceptions_info
-      ConcurrencyAnalyzer   → concurrency_info
-      ProtectedAccessDetector → protected_objects
-      LogicalErrorDetector  → logical_errors
-      BugDetector           → bug_report
-      PerformanceAnalyzer   → performance_warnings
-      TestHarnessGenerator  → test_harness_data
-      MockStubGenerator     → mock_stub_data
+    Analyze an Ada project by filesystem path.
+    Used by the Test Studio page to analyze a local project directory.
     """
+    global _analysis_result, _project_path
 
-    # ── Load all files into libadalang ────────────────────────────────────────
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    path = (body.get("path") or "").strip()
+    if not path:
+        default = Path(__file__).parent / "testada_caseinsensitive"
+        path = str(default)
+        print(f"[INFO] No path in request - using default: {path}")
+
+    if not os.path.exists(path):
+        return JSONResponse({"error": f"Path not found: {path}"}, status_code=404)
+
+    if not LIBADALANG_AVAILABLE:
+        return JSONResponse({
+            "ok": False,
+            "error": "libadalang not available. Install GNAT Studio.",
+            "file_count": 0,
+            "subprogram_count": 0,
+        })
+
+    try:
+        files = collect_ada_files(path)
+        if not files:
+            _analysis_result = {}
+            return JSONResponse({
+                "ok": True, "path": path,
+                "file_count": 0, "subprogram_count": 0,
+            })
+
+        result = _run_full_analysis(files)
+        _analysis_result = result
+        _project_path = path
+
+        return JSONResponse({
+            "ok": True,
+            "path": path,
+            "file_count": len(result.get("file_paths", [])),
+            "subprogram_count": sum(
+                len(v) for v in result.get("subprogram_index", {}).values()
+            ),
+            "error": None,
+        })
+    except Exception as exc:
+        print(f"[ERROR] /api/analyze failed:\n{traceback.format_exc()}")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+# ── Test studio: list files ───────────────────────────────────────────────────
+@app.get("/api/files")
+def api_list_files():
+    """List all Ada files from the last analysis."""
+    files = _analysis_result.get("file_paths", [])
+    out = []
+    for f in files:
+        p = Path(f)
+        out.append({
+            "path": f,
+            "name": p.name,
+            "ext":  p.suffix,
+            "size": p.stat().st_size if p.exists() else 0,
+        })
+    return JSONResponse(out)
+
+
+# ── Test studio: get file source ──────────────────────────────────────────────
+@app.get("/api/file")
+def api_get_file(path: str = ""):
+    """Return raw source of one Ada file."""
+    if not path or not os.path.isfile(path):
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            source = f.read()
+        return JSONResponse({"path": path, "source": source})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── Test studio: enriched subprograms ─────────────────────────────────────────
+@app.get("/api/subprograms")
+def api_list_subprograms():
+    """Return all subprograms enriched with variables, params, type constraints."""
+    return JSONResponse(_build_enriched_subprograms())
+
+
+# ── Test studio: run a test ───────────────────────────────────────────────────
+@app.post("/api/test/run")
+async def api_run_test(request: Request):
+    """Run a single test case with type validation and simulated execution."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    subp_name = body.get("subprogram")
+    inputs    = body.get("inputs", {})
+    expected  = body.get("expected", {})
+
+    if not subp_name:
+        return JSONResponse({"error": "subprogram required"}, status_code=400)
+
+    result  = _simulate_execution(subp_name, inputs, expected)
+    test_id = str(uuid.uuid4())[:8]
+    _test_results[test_id] = {
+        "id":         test_id,
+        "subprogram": subp_name,
+        "inputs":     inputs,
+        "expected":   expected,
+        "timestamp":  time.strftime("%H:%M:%S"),
+        **result,
+    }
+    return JSONResponse({"test_id": test_id, **result})
+
+
+# ── Test studio: get test results ─────────────────────────────────────────────
+@app.get("/api/test/results")
+def api_get_results(subprogram: str = ""):
+    """Get all test results, optionally filtered by subprogram name."""
+    results = list(_test_results.values())
+    if subprogram:
+        results = [r for r in results if r["subprogram"] == subprogram]
+    return JSONResponse(results)
+
+
+# ── Test studio: clear test results ──────────────────────────────────────────
+@app.post("/api/test/clear")
+def api_clear_results():
+    """Reset all test results for this session."""
+    _test_results.clear()
+    return JSONResponse({"ok": True})
+
+
+# ── Test studio: export full report ──────────────────────────────────────────
+@app.get("/api/export")
+def api_export():
+    """Export full analysis + test results as JSON."""
+    return JSONResponse(_make_serializable({
+        "project_path": _project_path,
+        "analysis":     _analysis_result,
+        "test_results": list(_test_results.values()),
+        "exported_at":  time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }))
+
+
+# ── Full analysis pipeline ────────────────────────────────────────────────────
+def _run_full_analysis(file_paths: list[str]) -> dict:
+    """Run every analyzer module and return a single merged result dict."""
     loader = ProjectLoader(file_paths)
-    units = loader.load_units()
+    units  = loader.load_units()
 
-    # ── Core analysis ─────────────────────────────────────────────────────────
-    subprogram_index = SubprogramIndexer(units).index()
-    ast_info         = Parser(units).extract_ast()
-    callgraph        = CallGraphBuilder(units).build()
-    dead_code        = DeadCodeDetector(callgraph).detect_unused_subprograms()
-
-    # ── Complexity & control flow ─────────────────────────────────────────────
+    subprogram_index      = SubprogramIndexer(units).index()
+    ast_info              = Parser(units).extract_ast()
+    callgraph             = CallGraphBuilder(units).build()
+    dead_code             = DeadCodeDetector(callgraph).detect_unused_subprograms()
     cyclomatic_complexity = ComplexityAnalyzer(units).compute()
     control_flow          = ControlFlowExtractor(units).run()
     loop_info             = LoopAnalyzer(units).detect()
-
-    # ── Variables & globals ───────────────────────────────────────────────────
-    variables_info  = VariablesAnalyzer(units).extract()
-    global_read_write = GlobalRWDetector(units).detect()
-
-    # ── Exceptions & concurrency ──────────────────────────────────────────────
-    exceptions_info   = ExceptionAnalyzer(units).detect()
-    concurrency_info  = ConcurrencyAnalyzer(units).analyze()
-    protected_objects = ProtectedAccessDetector(units).detect()
-
-    # ── Errors & performance ──────────────────────────────────────────────────
-    logical_errors       = LogicalErrorDetector(units).detect()
-    bug_report           = BugDetector(units).detect()
-    performance_warnings = PerformanceAnalyzer(units).analyze()
-
-    # ── Generators ────────────────────────────────────────────────────────────
-    test_harness_data = TestHarnessGenerator(subprogram_index).generate()
-    mock_stub_data    = MockStubGenerator(callgraph).generate()
+    variables_info        = VariablesAnalyzer(units).extract()
+    global_read_write     = GlobalRWDetector(units).detect()
+    exceptions_info       = ExceptionAnalyzer(units).detect()
+    concurrency_info      = ConcurrencyAnalyzer(units).analyze()
+    protected_objects     = ProtectedAccessDetector(units).detect()
+    logical_errors        = LogicalErrorDetector(units).detect()
+    bug_report            = BugDetector(units).detect()
+    performance_warnings  = PerformanceAnalyzer(units).analyze()
+    test_harness_data     = TestHarnessGenerator(subprogram_index).generate()
+    mock_stub_data        = MockStubGenerator(callgraph).generate()
 
     return {
-        # ── File info ──────────────────────────────────────────────────────
-        "file_paths":            file_paths,
-        "ast_info":              ast_info,
-
-        # ── Subprograms ────────────────────────────────────────────────────
-        "subprogram_index":      subprogram_index,
-
-        # ── Call graph & dead code ─────────────────────────────────────────
-        "call_graph":            callgraph,
-        "dead_code":             dead_code,
-
-        # ── Complexity & control flow ──────────────────────────────────────
-        "cyclomatic_complexity": cyclomatic_complexity,
+        "file_paths":             file_paths,
+        "ast_info":               ast_info,
+        "subprogram_index":       subprogram_index,
+        "call_graph":             callgraph,
+        "dead_code":              dead_code,
+        "cyclomatic_complexity":  cyclomatic_complexity,
         "control_flow_extractor": control_flow,
-        "loop_info":             loop_info,
-
-        # ── Variables & globals ────────────────────────────────────────────
-        "variables_info":        variables_info,
-        "global_read_write":     global_read_write,
-
-        # ── Exceptions & concurrency ───────────────────────────────────────
-        "exceptions_info":       exceptions_info,
-        "concurrency_info":      concurrency_info,
-        "protected_objects":     protected_objects,
-
-        # ── Errors & performance ───────────────────────────────────────────
-        "logical_errors":        logical_errors,
-        "bug_report":            bug_report,
-        "performance_warnings":  performance_warnings,
-
-        # ── Generators ────────────────────────────────────────────────────
-        "test_harness_data":     test_harness_data,
-        "mock_stub_data":        mock_stub_data,
+        "loop_info":              loop_info,
+        "variables_info":         variables_info,
+        "global_read_write":      global_read_write,
+        "exceptions_info":        exceptions_info,
+        "concurrency_info":       concurrency_info,
+        "protected_objects":      protected_objects,
+        "logical_errors":         logical_errors,
+        "bug_report":             bug_report,
+        "performance_warnings":   performance_warnings,
+        "test_harness_data":      test_harness_data,
+        "mock_stub_data":         mock_stub_data,
     }
 
 
@@ -278,30 +585,29 @@ if __name__ == "__main__":
     if not LIBADALANG_AVAILABLE and os.path.exists(GNAT_PYTHON) and sys.executable != GNAT_PYTHON:
         import subprocess
         print(f"[INFO] Re-launching with GNAT Python: {GNAT_PYTHON}")
-        result = subprocess.run([GNAT_PYTHON] + sys.argv)
-        sys.exit(result.returncode)
+        sys.exit(subprocess.run([GNAT_PYTHON] + sys.argv).returncode)
 
     try:
         import uvicorn
     except ImportError:
-        print("[ERROR] uvicorn not installed.")
-        print(f"  Run: {sys.executable} -m pip install uvicorn")
+        print(f"[ERROR] uvicorn not installed. Run: {sys.executable} -m pip install uvicorn")
         sys.exit(1)
 
     print("=" * 60)
     print(f"  Ada Analysis Tool API  v2.0.0")
-    print(f"  Python  : {sys.version.split()[0]}  ({sys.executable})")
-    print(f"  libadalang: {'available ✓' if LIBADALANG_AVAILABLE else 'NOT FOUND ✗'}")
-    if LIBADALANG_AVAILABLE:
-        print(f"  Modules : SubprogramIndexer, Parser, CallGraph, DeadCode,")
-        print(f"            Complexity, ControlFlow, Loops, Variables, Globals,")
-        print(f"            Exceptions, Concurrency, Protected, LogicalErrors,")
-        print(f"            BugDetector, Performance, HarnessGen, MockGen")
-    else:
-        print()
-        print("  Install GNAT Studio from:")
-        print("  https://github.com/AdaCore/gnatstudio/releases/latest")
+    print(f"  Python    : {sys.version.split()[0]}")
+    print(f"  libadalang: {'available' if LIBADALANG_AVAILABLE else 'NOT FOUND'}")
+    print(f"  Endpoints :")
+    print(f"    GET  /health")
+    print(f"    POST /analyze          (file upload - main IDE)")
+    print(f"    POST /api/analyze      (path-based  - test studio)")
+    print(f"    GET  /api/files        (test studio)")
+    print(f"    GET  /api/file         (test studio)")
+    print(f"    GET  /api/subprograms  (enriched with type constraints)")
+    print(f"    POST /api/test/run     (type-validated simulation)")
+    print(f"    GET  /api/test/results")
+    print(f"    POST /api/test/clear")
+    print(f"    GET  /api/export")
     print("=" * 60)
-    print()
 
     uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=False)
