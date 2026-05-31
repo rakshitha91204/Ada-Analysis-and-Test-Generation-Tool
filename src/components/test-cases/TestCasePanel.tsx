@@ -13,6 +13,7 @@ import { Button } from '../shared/Button';
 import { Badge } from '../shared/Badge';
 import { TestTube } from 'lucide-react';
 import '../../styles/TestStudio.css';
+import type { AdaAnalysisResult } from '../../utils/adaAnalyzer';
 
 // ── Test Studio types ─────────────────────────────────────────────────────────
 interface TypeConstraint {
@@ -41,6 +42,87 @@ interface TestRunResult {
   violations?: Array<{variable:string;type:string;value:string;error:string}>;
   normalized_types?: Record<string,string>;
   inputs: Record<string,string>; expected: Record<string,string>;
+}
+
+// ── Build StudioSubprogram from local analysis result (no extra API call) ─────
+function typeConstraint(type: string): TypeConstraint {
+  const tl = (type||'').toLowerCase().trim();
+  if (tl.includes('uint16'))   return { kind:'integer', min:0, max:65535 };
+  if (tl.includes('uint32'))   return { kind:'integer', min:0, max:4294967295 };
+  if (tl.includes('uint8'))    return { kind:'integer', min:0, max:255 };
+  if (tl.includes('positive')) return { kind:'integer', min:1, max:2147483647 };
+  if (tl.includes('natural'))  return { kind:'integer', min:0, max:2147483647 };
+  if (tl.includes('integer'))  return { kind:'integer', min:-2147483648, max:2147483647 };
+  if (tl.includes('float'))    return { kind:'float', min:-1e38, max:1e38 };
+  if (tl.includes('boolean'))  return { kind:'boolean', values:['True','False'] };
+  if (tl.includes('character'))return { kind:'character' };
+  if (tl.includes('string'))   return { kind:'string' };
+  return { kind:'unknown' };
+}
+
+function buildStudioSubprogram(
+  subpName: string,
+  analysis: AdaAnalysisResult
+): StudioSubprogram | null {
+  // Find the subprogram entry in subprogram_index
+  let entry: { name:string; parameters:string[]; return_type:string|null; start_line:number; end_line:number } | null = null;
+  let filePath = '';
+  for (const [fp, subs] of Object.entries(analysis.subprogram_index || {})) {
+    const found = subs.find(s => s.name === subpName);
+    if (found) { entry = found; filePath = fp; break; }
+  }
+  if (!entry) return null;
+
+  // Parse raw parameter strings into structured params
+  const params: StudioParam[] = [];
+  for (const raw of (entry.parameters || [])) {
+    // Format: "Name : in Type" or "Name : out Type" or "Name : in out Type"
+    const colonIdx = raw.indexOf(':');
+    if (colonIdx === -1) continue;
+    const namesPart = raw.slice(0, colonIdx).trim();
+    const rest = raw.slice(colonIdx + 1).trim();
+    let dir: 'in'|'out'|'in out' = 'in';
+    let typePart = rest;
+    if (/^in\s+out\b/i.test(rest))      { dir = 'in out'; typePart = rest.replace(/^in\s+out\s*/i, ''); }
+    else if (/^out\b/i.test(rest))       { dir = 'out';    typePart = rest.replace(/^out\s*/i, ''); }
+    else if (/^in\b/i.test(rest))        { dir = 'in';     typePart = rest.replace(/^in\s*/i, ''); }
+    const type = typePart.trim();
+    for (const pname of namesPart.split(',')) {
+      const n = pname.trim();
+      if (n) params.push({ name:n, dir, type, type_normalized:type.toLowerCase(), constraint:typeConstraint(type) });
+    }
+  }
+
+  // Build variables from variables_info
+  const variables: StudioVariable[] = [];
+  const fileVars = (analysis.variables_info || {})[filePath] || {};
+  const locals  = (fileVars.local_variables  || {})[subpName] || {};
+  const globals = (fileVars.global_variables || {})[subpName] || {};
+  const consts  = (fileVars.global_constants || {})[subpName] || {};
+  for (const [vname, vdata] of Object.entries(locals)) {
+    const t = (vdata as {type:string}).type || 'Unknown';
+    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'local', constraint:typeConstraint(t) });
+  }
+  for (const [vname, vdata] of Object.entries(globals)) {
+    const t = (vdata as {type:string}).type || 'Unknown';
+    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'global', constraint:typeConstraint(t) });
+  }
+  for (const [vname, vdata] of Object.entries(consts)) {
+    const t = (vdata as {type:string}).type || 'Unknown';
+    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'constant', constraint:typeConstraint(t) });
+  }
+
+  const fileName = filePath.split(/[\\/]/).pop() || filePath;
+  const complexity = (analysis.cyclomatic_complexity || {})[subpName] ?? null;
+  const isDead = (analysis.dead_code || []).includes(subpName);
+  const calls = (analysis.call_graph || {})[subpName] || [];
+
+  return {
+    name: subpName, file: filePath, file_name: fileName,
+    start_line: entry.start_line ?? null, end_line: entry.end_line ?? null,
+    return_type: entry.return_type ?? null,
+    params, variables, complexity, is_dead: isDead, calls,
+  };
 }
 
 // ── Test Studio helpers ───────────────────────────────────────────────────────
@@ -98,7 +180,7 @@ async function studioGet<T>(path: string): Promise<T> {
 }
 
 // ── TestStudioInputs — the full input/variables/history UI ───────────────────
-const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subpName, fileId }) => {
+const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult | null }> = ({ subpName, analysis }) => {
   const [studioSubp, setStudioSubp] = useState<StudioSubprogram|null>(null);
   const [inputs,     setInputs]     = useState<Record<string,string>>({});
   const [expected,   setExpected]   = useState<Record<string,string>>({});
@@ -107,13 +189,32 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
   const [history,    setHistory]    = useState<TestRunResult[]>([]);
   const [activeTab,  setActiveTab]  = useState<'inputs'|'variables'|'history'>('inputs');
 
-  // Load enriched subprogram from backend
+  // Build enriched subprogram directly from the local analysis result
   useEffect(() => {
+    if (!subpName || !analysis) { setStudioSubp(null); return; }
+
+    // First try: build from local parse store data (works for file-upload flow)
+    const local = buildStudioSubprogram(subpName, analysis);
+    if (local) {
+      setStudioSubp(local);
+      const init: Record<string,string> = {};
+      local.params.filter(p => p.dir === 'in' || p.dir === 'in out')
+        .forEach(p => { init[p.name] = typeDefault(p.type); });
+      setInputs(init);
+      const exp: Record<string,string> = {};
+      local.params.filter(p => p.dir === 'out' || p.dir === 'in out')
+        .forEach(p => { exp[p.name] = typeDefault(p.type); });
+      setExpected(exp);
+      setLastResult(null);
+      setActiveTab('inputs');
+      return;
+    }
+
+    // Fallback: try backend /api/subprograms (works for path-based Test Studio flow)
     studioGet<StudioSubprogram[]>('/subprograms').then(list => {
       const found = list.find(s => s.name === subpName);
       if (found) {
         setStudioSubp(found);
-        // Reset inputs on subprogram change (BUG FIX 3)
         const init: Record<string,string> = {};
         found.params.filter(p => p.dir === 'in' || p.dir === 'in out')
           .forEach(p => { init[p.name] = typeDefault(p.type); });
@@ -124,9 +225,11 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
         setExpected(exp);
         setLastResult(null);
         setActiveTab('inputs');
+      } else {
+        setStudioSubp(null);
       }
     });
-  }, [subpName]);
+  }, [subpName, analysis]);
 
   const autoGen = () => {
     if (!studioSubp) return;
@@ -153,7 +256,9 @@ const TestStudioInputs: React.FC<{ subpName: string; fileId: string }> = ({ subp
 
   if (!studioSubp) return (
     <div className="px-3 py-2 text-xs font-mono text-zinc-500">
-      ⏳ loading type info from backend...
+      {analysis
+        ? `⚠ no parameter info found for "${subpName}" — parse the file first`
+        : '⚠ parse a file first to see inputs and variables'}
     </div>
   );
 
@@ -445,7 +550,7 @@ export const TestCasePanel: React.FC = () => {
           ) : (
             <>
               {/* ── TEST STUDIO INPUTS — shown at top when subprogram selected ── */}
-              <TestStudioInputs subpName={selectedSub?.name ?? ''} fileId={activeFileId ?? ''} />
+              <TestStudioInputs subpName={selectedSub?.name ?? ''} analysis={activeResult?.analysis ?? null} />
 
               {/* Action bar */}
               <div className="flex items-center gap-2 flex-shrink-0">
