@@ -265,6 +265,12 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   // BUG FIX 4: exact direction comparison
   const inParams  = studioSubp.params.filter(p => p.dir === 'in' || p.dir === 'in out');
   const outParams = studioSubp.params.filter(p => p.dir === 'out' || p.dir === 'in out');
+  const hasNoParams = inParams.length === 0 && outParams.length === 0;
+
+  // Auto-switch to variables tab if subprogram has no parameters
+  useEffect(() => {
+    if (hasNoParams && studioSubp) setActiveTab('variables');
+  }, [studioSubp?.name, hasNoParams]); // eslint-disable-line
 
   return (
     <div className="ts-dark border rounded-lg overflow-hidden flex-shrink-0 mb-3"
@@ -301,67 +307,81 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       {/* INPUTS TAB */}
       {activeTab === 'inputs' && (
         <div style={{ padding: '12px 14px' }}>
-          {inParams.length > 0 && <>
-            <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
-              in parameters — set test values
+          {hasNoParams ? (
+            <div style={{ padding: '8px 0 12px', fontSize: 12, color: '#71717a', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>ƒ</span>
+              <span>
+                <strong style={{ color: '#a1a1aa' }}>{studioSubp.name}</strong> has no parameters.
+                {studioSubp.variables.length > 0
+                  ? <> See the <button onClick={() => setActiveTab('variables')} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>variables tab</button> for declared variables.</>
+                  : ' This is a parameterless procedure.'}
+              </span>
             </div>
-            <div className="ts-input-grid" style={{ marginBottom: 12 }}>
-              {inParams.map(p => (
-                <div key={p.name} className="ts-input-card">
-                  <div className="ts-input-header">
-                    <span className="ts-input-dir">{p.dir}</span>
-                    <span className="ts-input-name">{p.name}</span>
-                  </div>
-                  <div className="ts-input-type ts-mono">
-                    {p.type} <CaseBadge type={p.type} />
-                  </div>
-                  {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
-                  {p.constraint.kind === 'boolean'
-                    ? <select className="ts-input-field"
-                        value={inputs[p.name]??'False'} onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}>
-                        <option>False</option><option>True</option>
-                      </select>
-                    : <input className="ts-input-field"
-                        type={p.constraint.kind==='integer'?'number':'text'}
-                        value={inputs[p.name]??typeDefault(p.type)}
-                        onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}
-                        min={p.constraint.min} max={p.constraint.max} />}
+          ) : (
+            <>
+              {inParams.length > 0 && <>
+                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
+                  in parameters — set test values
                 </div>
-              ))}
-            </div>
-          </>}
-
-          {outParams.length > 0 && <>
-            <div className="ts-section-label" style={{ padding: '0 0 8px' }}>expected output values</div>
-            <div className="ts-input-grid" style={{ marginBottom: 12 }}>
-              {outParams.map(p => (
-                <div key={p.name} className="ts-input-card ts-input-card-out">
-                  <div className="ts-input-header">
-                    <span className="ts-input-dir out">out</span>
-                    <span className="ts-input-name">{p.name}</span>
-                  </div>
-                  <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
-                  {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
-                  <input className="ts-input-field"
-                    type="text" value={expected[p.name]??typeDefault(p.type)}
-                    onChange={e => setExpected(ex => ({...ex,[p.name]:e.target.value}))}
-                    placeholder="expected value" />
+                <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                  {inParams.map(p => (
+                    <div key={p.name} className="ts-input-card">
+                      <div className="ts-input-header">
+                        <span className="ts-input-dir">{p.dir}</span>
+                        <span className="ts-input-name">{p.name}</span>
+                      </div>
+                      <div className="ts-input-type ts-mono">
+                        {p.type} <CaseBadge type={p.type} />
+                      </div>
+                      {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
+                      {p.constraint.kind === 'boolean'
+                        ? <select className="ts-input-field"
+                            value={inputs[p.name]??'False'} onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}>
+                            <option>False</option><option>True</option>
+                          </select>
+                        : <input className="ts-input-field"
+                            type={p.constraint.kind==='integer'?'number':'text'}
+                            value={inputs[p.name]??typeDefault(p.type)}
+                            onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}
+                            min={p.constraint.min} max={p.constraint.max} />}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </>}
+              </>}
 
-          {/* Buttons */}
+              {outParams.length > 0 && <>
+                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>expected output values</div>
+                <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                  {outParams.map(p => (
+                    <div key={p.name} className="ts-input-card ts-input-card-out">
+                      <div className="ts-input-header">
+                        <span className="ts-input-dir out">out</span>
+                        <span className="ts-input-name">{p.name}</span>
+                      </div>
+                      <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
+                      {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
+                      <input className="ts-input-field"
+                        type="text" value={expected[p.name]??typeDefault(p.type)}
+                        onChange={e => setExpected(ex => ({...ex,[p.name]:e.target.value}))}
+                        placeholder="expected value" />
+                    </div>
+                  ))}
+                </div>
+              </>}
+            </>
+          )}
+
+          {/* Buttons — always shown */}
           <div className="ts-btn-row" style={{ paddingLeft: 0, paddingRight: 0 }}>
             <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}>
               ▶ {running ? 'running...' : 'run test'}
             </button>
-            <button className="ts-btn" onClick={autoGen}>✨ auto-fill</button>
-            <button className="ts-btn" onClick={() => {
+            {!hasNoParams && <button className="ts-btn" onClick={autoGen}>✨ auto-fill</button>}
+            {!hasNoParams && <button className="ts-btn" onClick={() => {
               const blob = new Blob([JSON.stringify(inputs,null,2)],{type:'application/json'});
               const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
               a.download = `${studioSubp.name}_inputs.json`; a.click();
-            }}>⬇ export inputs</button>
+            }}>⬇ export inputs</button>}
           </div>
 
           {/* Result box */}
