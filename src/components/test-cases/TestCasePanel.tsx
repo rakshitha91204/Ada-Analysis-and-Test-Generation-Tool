@@ -64,14 +64,27 @@ function buildStudioSubprogram(
   subpName: string,
   analysis: AdaAnalysisResult
 ): StudioSubprogram | null {
-  // Find the subprogram entry in subprogram_index
+  if (!subpName) return null;
+  const nameLower = subpName.toLowerCase();
+
+  // Find the subprogram entry — case-insensitive, also try partial match
   let entry: { name:string; parameters:string[]; return_type:string|null; start_line:number; end_line:number } | null = null;
   let filePath = '';
   for (const [fp, subs] of Object.entries(analysis.subprogram_index || {})) {
-    const found = subs.find(s => s.name === subpName);
+    // Exact match first
+    let found = subs.find(s => s.name === subpName);
+    // Case-insensitive fallback
+    if (!found) found = subs.find(s => s.name.toLowerCase() === nameLower);
+    // Partial match fallback (subpName contains the name or vice versa)
+    if (!found) found = subs.find(s =>
+      s.name.toLowerCase().includes(nameLower) || nameLower.includes(s.name.toLowerCase())
+    );
     if (found) { entry = found; filePath = fp; break; }
   }
   if (!entry) return null;
+
+  // Use the actual name from the index (may differ in case)
+  const actualName = entry.name;
 
   // Parse raw parameter strings into structured params
   // Backend format after fix: each entry is one param "Name : in Type"
@@ -98,12 +111,12 @@ function buildStudioSubprogram(
     }
   }
 
-  // Build variables from variables_info
+  // Build variables from variables_info — use actualName for lookup
   const variables: StudioVariable[] = [];
   const fileVars = (analysis.variables_info || {})[filePath] || {};
-  const locals  = (fileVars.local_variables  || {})[subpName] || {};
-  const globals = (fileVars.global_variables || {})[subpName] || {};
-  const consts  = (fileVars.global_constants || {})[subpName] || {};
+  const locals  = (fileVars.local_variables  || {})[actualName] || {};
+  const globals = (fileVars.global_variables || {})[actualName] || {};
+  const consts  = (fileVars.global_constants || {})[actualName] || {};
   for (const [vname, vdata] of Object.entries(locals)) {
     const t = (vdata as {type:string}).type || 'Unknown';
     variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'local', constraint:typeConstraint(t) });
@@ -118,12 +131,12 @@ function buildStudioSubprogram(
   }
 
   const fileName = filePath.split(/[\\/]/).pop() || filePath;
-  const complexity = (analysis.cyclomatic_complexity || {})[subpName] ?? null;
-  const isDead = (analysis.dead_code || []).includes(subpName);
-  const calls = (analysis.call_graph || {})[subpName] || [];
+  const complexity = (analysis.cyclomatic_complexity || {})[actualName] ?? null;
+  const isDead = (analysis.dead_code || []).includes(actualName);
+  const calls = (analysis.call_graph || {})[actualName] || [];
 
   return {
-    name: subpName, file: filePath, file_name: fileName,
+    name: actualName, file: filePath, file_name: fileName,
     start_line: entry.start_line ?? null, end_line: entry.end_line ?? null,
     return_type: entry.return_type ?? null,
     params, variables, complexity, is_dead: isDead, calls,
@@ -214,17 +227,19 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       setExpected(exp);
 
       setLastResult(null);
-      // Auto-switch to variables tab if no parameters
       setActiveTab(hasNoParams ? 'variables' : 'inputs');
     };
 
-    // First try: build from local parse store data (works for file-upload flow)
+    // Try the provided analysis first
     const local = buildStudioSubprogram(subpName, analysis);
     if (local) { applySubp(local); return; }
 
-    // Fallback: try backend /api/subprograms (works for path-based Test Studio flow)
+    // Fallback: try backend /api/subprograms (path-based Test Studio flow)
     studioGet<StudioSubprogram[]>('/subprograms').then(list => {
-      const found = list.find(s => s.name === subpName);
+      const found = list.find(s =>
+        s.name === subpName ||
+        s.name.toLowerCase() === subpName.toLowerCase()
+      );
       if (found) applySubp(found);
       else setStudioSubp(null);
     });
@@ -493,23 +508,41 @@ export const TestCasePanel: React.FC = () => {
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
 
-  // Resolve active analysis — try activeResultFileId, then activeFileId, then most recent
+  // Resolve active analysis — search all results for the one containing this subprogram
   const activeResult = (() => {
-    if (activeResultFileId && results[activeResultFileId]) return results[activeResultFileId];
-    if (activeFileId && results[activeFileId]) return results[activeFileId];
+    // Try activeResultFileId first
+    if (activeResultFileId && results[activeResultFileId]) {
+      const r = results[activeResultFileId];
+      if (resolvedSubpName && buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+      if (!resolvedSubpName) return r;
+    }
+    // Try activeFileId
+    if (activeFileId && results[activeFileId]) {
+      const r = results[activeFileId];
+      if (resolvedSubpName && buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+      if (!resolvedSubpName) return r;
+    }
+    // Search all results for one that contains this subprogram
+    if (resolvedSubpName) {
+      for (const r of Object.values(results)) {
+        if (buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+      }
+    }
+    // Last resort: most recent
     const vals = Object.values(results);
     return vals.length > 0 ? vals[vals.length - 1] : null;
   })();
 
-  // Resolve subprogram name — from store first, then from subprogram_index by matching name
+  // Resolve subprogram name — from store first, then search all parse results
   const resolvedSubpName = (() => {
     if (selectedSub?.name) return selectedSub.name;
-    if (!selectedSubprogramId || !activeResult?.analysis?.subprogram_index) return '';
-    // The ID format is: fileId_SubpName_lineNum — extract the name part
-    // Try all subprograms in the index and find one whose name appears in the ID
-    for (const subs of Object.values(activeResult.analysis.subprogram_index)) {
-      for (const s of subs) {
-        if (selectedSubprogramId.includes(s.name)) return s.name;
+    if (!selectedSubprogramId) return '';
+    // Search all parsed results for a subprogram whose name appears in the ID
+    for (const result of Object.values(results)) {
+      for (const subs of Object.values(result.analysis?.subprogram_index || {})) {
+        for (const s of subs) {
+          if (selectedSubprogramId.includes(s.name)) return s.name;
+        }
       }
     }
     return '';

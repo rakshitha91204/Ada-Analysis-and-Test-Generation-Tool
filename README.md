@@ -254,7 +254,7 @@ cd D:\ada\backend
 │         │                                      │              │
 │         │                              AdaAnalysisResult JSON │
 │         │                                      │              │
-│         └── Backend unavailable? ──► adaAnalyzer.ts (regex)  │
+│         └── Backend unavailable? ──► adaAnalyzer.ts (regex)   │
 │                                               │               │
 │                                               ▼               │
 │                                   useParseStore (Zustand)     │
