@@ -2,17 +2,15 @@ import React, { useState } from 'react';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { AnalysisOutput } from '../analysis/AnalysisOutput';
 import { TestRunner } from '../test-cases/TestRunner';
-import { TestStudioPanel } from '../test-cases/TestStudioPanel';
 import { ChevronDown } from 'lucide-react';
 import { useEditorStore } from '../../store/useEditorStore';
 
-type BottomTab = 'errors' | 'analysis' | 'runner' | 'studio';
+type BottomTab = 'errors' | 'analysis' | 'runner';
 
 const tabs: { id: BottomTab; label: string }[] = [
   { id: 'errors',   label: 'Diagnostics' },
   { id: 'analysis', label: 'Analysis' },
   { id: 'runner',   label: 'Test Runner' },
-  { id: 'studio',   label: '🧪 Test Studio' },
 ];
 
 export const BottomPanel: React.FC = () => {
@@ -55,7 +53,6 @@ export const BottomPanel: React.FC = () => {
         {activeTab === 'errors'   && <DiagnosticsPanel />}
         {activeTab === 'analysis' && <AnalysisOutput compact />}
         {activeTab === 'runner'   && <TestRunner />}
-        {activeTab === 'studio'   && <TestStudioPanel />}
       </div>
     </div>
   );
