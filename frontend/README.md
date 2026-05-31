@@ -11,77 +11,23 @@ A full-stack web IDE for **Ada source code static analysis and automatic test ca
 | Frontend | React 18 · TypeScript · Monaco Editor · Vite 5 · Zustand · Tailwind CSS |
 | Backend | Python 3.13 · FastAPI · libadalang (AdaCore semantic AST) |
 
-> **Works without the backend.** Upload any `.adb`/`.ads` file and the frontend falls back to a built-in TypeScript analyzer automatically.
-
----
-
-## Run the Project
-
-### Terminal 1 — Start the backend
-
-> **Requires GNAT Studio 2026** (includes Python 3.13 + libadalang).  
-> Download: https://github.com/AdaCore/gnatstudio/releases/latest
-
-```bat
-cd backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-Backend runs at → **http://localhost:8001**
-
-**Or use the one-click script (Windows):**
-
-```bat
-cd backend
-start_server.bat
-```
-
----
-
-### Terminal 2 — Start the frontend
-
-Run from the **project root** (same folder as `package.json`):
-
-```bash
-npm install
-npm run dev
-```
-
-Frontend runs at → **http://localhost:5173**
-
-> If port 5173 is busy, Vite picks the next available port (e.g. 5174). Check the terminal output.
-
----
-
-### Verify both are running
-
-Open a third terminal and run:
-
-```bat
-curl http://localhost:8001/health
-```
-
-Expected response:
-```json
-{"status": "ok", "libadalang_available": true, "version": "2.0.0"}
-```
-
-Then open **http://localhost:5173** in your browser.
+> **Live demo** — the frontend works without the backend. Upload any `.adb`/`.ads` file and it falls back to a client-side TypeScript analyzer automatically.
 
 ---
 
 ## Table of Contents
 
 1. [Project Structure](#project-structure)
-2. [Installation](#installation)
-3. [How It Works](#how-it-works)
-4. [Features](#features)
-5. [API Reference](#api-reference)
-6. [Backend Analyzer Modules](#backend-analyzer-modules)
-7. [Frontend Data Flow](#frontend-data-flow)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Tech Stack](#tech-stack)
-10. [Development](#development)
+2. [Quick Start](#quick-start)
+3. [Installation](#installation)
+4. [How It Works](#how-it-works)
+5. [Features](#features)
+6. [API Reference](#api-reference)
+7. [Backend Analyzer Modules](#backend-analyzer-modules)
+8. [Frontend Data Flow](#frontend-data-flow)
+9. [Keyboard Shortcuts](#keyboard-shortcuts)
+10. [Tech Stack](#tech-stack)
+11. [Development](#development)
 
 ---
 
@@ -99,7 +45,7 @@ ada-analysis-tool/
 │   │   ├── graph/                ← Graphviz call graph viewer
 │   │   ├── panels/               ← Resizable right/bottom panels
 │   │   ├── subprogram/           ← Outline explorer, context menu, parameters modal
-│   │   ├── test-cases/           ← TestCasePanel (embedded Test Studio inputs),
+│   │   ├── test-cases/           ← TestCasePanel (with embedded Test Studio inputs),
 │   │   │                           TestStudioPanel, cards, history, runner, heatmap
 │   │   ├── upload/               ← Dropzone, file/folder preview cards
 │   │   └── shared/               ← Badge, Button, Toast, Tooltip, CommandPalette
@@ -109,7 +55,7 @@ ada-analysis-tool/
 │   │   └── useKeyboardShortcuts.ts
 │   ├── mocks/                    ← Demo data (used only when no real files loaded)
 │   ├── pages/
-│   │   ├── UploadPage.tsx        ← Drag & drop entry + Open Test Studio button
+│   │   ├── UploadPage.tsx        ← Drag & drop entry point + Open Test Studio button
 │   │   ├── EditorPage.tsx        ← Full IDE layout
 │   │   └── TestStudioPage.tsx    ← Standalone Test Studio page (/test-studio)
 │   ├── store/                    ← Zustand stores
@@ -147,9 +93,51 @@ ada-analysis-tool/
 
 ---
 
+## Quick Start
+
+### Step 1 — Start the backend
+
+> Requires **GNAT Studio 2026** (bundles Python 3.13 + libadalang).  
+> Download (~370 MB): https://github.com/AdaCore/gnatstudio/releases/latest
+
+**Option A — one-click (Windows):**
+
+```bat
+cd backend
+start_server.bat
+```
+
+**Option B — manual:**
+
+```bat
+"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install -r backend\requirements.txt
+"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001
+```
+
+> Run the above command from inside the `backend\` folder, or use the full path:
+> ```bat
+> cd backend
+> "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001
+> ```
+
+Backend starts at **http://localhost:8001**
+
+### Step 2 — Start the frontend
+
+```bash
+npm install
+npm run dev
+```
+
+Frontend starts at **http://localhost:5173** (or the next available port if 5173 is in use).
+
+Open your browser, upload `.adb` / `.ads` files, click a file to parse it — the full analysis JSON appears instantly.
+
+---
+
 ## Installation
 
-### Frontend
+### Frontend requirements
 
 | Requirement | Version |
 |---|---|
@@ -157,10 +145,10 @@ ada-analysis-tool/
 | npm | 9+ |
 
 ```bash
-# Install dependencies (run once from project root)
+# Install all dependencies
 npm install
 
-# Start dev server
+# Start development server
 npm run dev
 
 # Build for production
@@ -170,39 +158,49 @@ npm run build
 npm run preview
 ```
 
-### Backend
+### Backend requirements
 
-`libadalang` is **not on PyPI** — it ships exclusively with GNAT Studio.
+`libadalang` is **not on PyPI** — it ships exclusively with the GNAT toolchain.
 
-**Step 1 — Install GNAT Studio 2026 (Windows x64)**
+**Step 1 — Install GNAT Studio 2026 (Windows x64):**
 
-Download from:
+Download the installer from:
 ```
 https://github.com/AdaCore/gnatstudio/releases/latest
 ```
 
-Run the `.exe` installer — installs to `C:\GNATSTUDIO\` by default.
+Run the `.exe` installer — it installs to `C:\GNATSTUDIO\` by default.
 
-**Step 2 — Verify libadalang is available**
+**Step 2 — Verify libadalang is available:**
 
 ```bat
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -c "import libadalang; print('libadalang OK')"
 ```
 
-Expected: `libadalang OK`
+Expected output: `libadalang OK`
 
-**Step 3 — Install Python dependencies**
+**Step 3 — Install Python dependencies:**
 
 ```bat
-cd backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9
+"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install -r backend\requirements.txt
 ```
 
-**Step 4 — Start the server**
+**Step 4 — Start the server:**
 
 ```bat
 cd backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001
+```
+
+**Verify the server is running:**
+
+```bat
+curl http://localhost:8001/health
+```
+
+Expected response:
+```json
+{"status": "ok", "libadalang_available": true, "version": "2.0.0"}
 ```
 
 ---
@@ -274,22 +272,22 @@ cd backend
 - **Open Test Studio** button — goes directly to the Test Studio page
 - Session persistence — files survive page refresh via `localStorage`
 
-### Editor — Test Cases tab
-- **Test Studio inputs embedded at the top** when a subprogram is selected:
-  - `inputs` tab — editable parameter cards with type labels (UINT16 CAPS, uint16 lower, UInt16 orig), range hints (0..65535), run test / auto-fill / export buttons
-  - `variables` tab — full variable table with declared type, normalized type, scope, constraint
-  - `history` tab — every test run with timestamp, pass/fail/error, inputs
-  - Result box — pass/fail/error with actual vs expected values and type violations
+### Editor (Test Cases tab)
+- **Test Studio inputs embedded at the top** — when a subprogram is selected:
+  - `inputs` tab: editable parameter cards with type labels (UINT16 CAPS, uint16 lower, UInt16 orig), range hints (0..65535), run test / auto-fill / export buttons
+  - `variables` tab: full variable table with declared type, normalized type, scope, constraint
+  - `history` tab: every test run with timestamp, pass/fail/error, inputs
+  - Result box: pass/fail/error with actual vs expected values and type violations
 - Auto-generated test cases (normal, edge, invalid, boundary) shown below
 - Drag-to-reorder test cards, export as JSON / .adb / CSV
 
-### Test Studio (standalone at `/test-studio`)
+### Test Studio (standalone page at `/test-studio`)
 - Enter any Ada project path → click Analyze
 - Subprogram list with dead code badges and test status dots
 - Same input/variables/history UI as the embedded version
 - Results sidebar, export report button
 
-### Static Analysis — 18 libadalang modules
+### Static Analysis (18 libadalang modules)
 
 | Field | Module | Frontend |
 |---|---|---|
@@ -330,13 +328,15 @@ cd backend
 
 ### `POST /analyze` — file upload
 
-**Request:** `multipart/form-data`, field `files`, one or more `.adb`/`.ads`/`.ada` files
+**Request:** `multipart/form-data`, field name `files`, one or more `.adb`/`.ads`/`.ada` files
 
 ```bash
 curl -X POST http://localhost:8001/analyze \
   -F "files=@my_package.adb" \
   -F "files=@my_package.ads"
 ```
+
+**Response:** Full `AdaAnalysisResult` JSON (18 fields — see How It Works diagram)
 
 **Error responses:**
 
@@ -347,6 +347,8 @@ curl -X POST http://localhost:8001/analyze \
 | `500` | Analysis pipeline error |
 
 ### `POST /api/analyze` — path-based (Test Studio)
+
+**Request:** JSON body
 
 ```bash
 curl -X POST http://localhost:8001/api/analyze \
@@ -361,19 +363,22 @@ curl -X POST http://localhost:8001/api/analyze \
 
 ### `GET /api/subprograms`
 
+Returns enriched subprograms with structured params and type constraints:
+
 ```json
 [
   {
     "name": "Check_Pixel",
+    "file": "C:\\...\\bitmapped_drawing.adb",
     "file_name": "bitmapped_drawing.adb",
     "start_line": 30,
     "end_line": 88,
     "complexity": 5,
     "is_dead": true,
     "params": [
-      {"name": "Orida_In",  "dir": "in",  "type": "UINT16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
-      {"name": "Aran_In",   "dir": "in",  "type": "uint16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
-      {"name": "Karan_Out", "dir": "out", "type": "UInt16", "constraint": {"kind": "integer", "min": 0, "max": 65535}}
+      {"name": "Orida_In", "dir": "in",  "type": "UINT16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
+      {"name": "Aran_In",  "dir": "in",  "type": "uint16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
+      {"name": "Karan_Out","dir": "out", "type": "UInt16", "constraint": {"kind": "integer", "min": 0, "max": 65535}}
     ],
     "variables": [...],
     "calls": []
@@ -389,19 +394,17 @@ curl -X POST http://localhost:8001/api/test/run \
   -d "{\"subprogram\": \"Check_Pixel\", \"inputs\": {\"Orida_In\": \"100\", \"Aran_In\": \"50\"}, \"expected\": {\"Karan_Out\": \"150\"}}"
 ```
 
-**Response — pass:**
+**Response (pass):**
 ```json
 {"status": "pass", "message": "All assertions passed", "actual": {"Karan_Out": "150"}, "elapsed_ms": 0.02}
 ```
 
-**Response — type violation:**
+**Response (type violation):**
 ```json
 {
   "status": "error",
   "message": "Type constraint violation",
-  "violations": [
-    {"variable": "Orida_In", "type": "UINT16", "value": "99999", "error": "Value 99999 out of range [0 .. 65535]"}
-  ],
+  "violations": [{"variable": "Orida_In", "type": "UINT16", "value": "99999", "error": "Value 99999 out of range [0 .. 65535]"}],
   "actual": {}
 }
 ```
@@ -500,7 +503,7 @@ useFileParser.parseFile(file)
 | `Ctrl+M` | Toggle minimap |
 | `Ctrl++` / `Ctrl+-` | Increase / decrease font size |
 | `Ctrl+\` | Toggle right panel |
-| `Ctrl+`` ` `` | Toggle bottom panel |
+| `Ctrl+\`` | Toggle bottom panel |
 | `?` | Keyboard shortcuts modal |
 | `Esc` | Close modal / context menu |
 
@@ -537,27 +540,27 @@ useFileParser.parseFile(file)
 
 ## Development
 
-### Run both servers (copy-paste ready)
+### Run both servers
 
-**Terminal 1 — Backend:**
+**Terminal 1 — Backend** (run from inside `backend\` folder):
 
 ```bat
 cd backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-**Terminal 2 — Frontend:**
+**Terminal 2 — Frontend** (run from project root):
 
 ```bash
 npm run dev
 ```
 
-### npm scripts
+### Available npm scripts
 
 ```bash
-npm run dev      # Dev server  →  http://localhost:5173
-npm run build    # Production build  →  dist/
-npm run preview  # Preview build  →  http://localhost:4173
+npm run dev      # Dev server at http://localhost:5173
+npm run build    # Production build → dist/
+npm run preview  # Preview production build at http://localhost:4173
 ```
 
 ### Run the CLI analyzer (no server needed)
@@ -567,30 +570,33 @@ cd backend
 "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" runner.py
 ```
 
-Output is written to `analysis_output.json`.  
-To analyze your own files, edit the `path` variable in `runner.py`:
+The default path is `backend\testada_caseinsensitive\`. To analyze your own files, edit the `path` variable near the bottom of `runner.py`:
 
 ```python
-# Default:
 path = Path(__file__).parent / "testada_caseinsensitive"
-
-# Change to your project:
+# Change to:
 path = Path("C:/your/ada/project")
 ```
 
-### Environment variables (production)
+Output is written to `analysis_output.json`.
+
+### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_API_ROOT_URL` | `""` | Base URL for `/health` and `/analyze` |
-| `VITE_API_BASE_URL` | `/api` | Base URL for all `/api/*` endpoints |
+| `VITE_API_ROOT_URL` | `""` (empty) | Base URL for `/health` and `/analyze` endpoints |
+| `VITE_API_BASE_URL` | `/api` | Base URL for all `/api/*` test studio endpoints |
 
-Create a `.env` file at the project root:
+For production deployment, set both in a `.env` file:
 
 ```env
 VITE_API_ROOT_URL=https://your-backend.example.com
 VITE_API_BASE_URL=https://your-backend.example.com/api
 ```
+
+### Fix `start_server.bat` port display
+
+The `start_server.bat` echo message says port 8000 but the server runs on **8001**. This is a display-only issue — the server itself starts correctly on 8001.
 
 ---
 

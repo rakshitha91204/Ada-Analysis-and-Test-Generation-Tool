@@ -11,7 +11,7 @@ set PYTHON=C:\GNATSTUDIO\share\gnatstudio\python\python.exe
 echo ============================================================
 echo  Ada Analysis Tool API
 echo  Python : %PYTHON%
-echo  Server : http://localhost:8000
+echo  Server : http://localhost:8001
 echo ============================================================
 echo.
 
@@ -25,5 +25,5 @@ REM Install FastAPI deps if missing
 echo [INFO] Starting server on http://localhost:8001 ... Press Ctrl+C to stop.
 echo.
 
-%PYTHON% server.py
+%PYTHON% -m uvicorn server:app --host 0.0.0.0 --port 8001
 pause
