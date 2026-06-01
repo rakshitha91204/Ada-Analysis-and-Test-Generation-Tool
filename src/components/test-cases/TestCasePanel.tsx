@@ -508,36 +508,10 @@ export const TestCasePanel: React.FC = () => {
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
 
-  // Resolve active analysis — search all results for the one containing this subprogram
-  const activeResult = (() => {
-    // Try activeResultFileId first
-    if (activeResultFileId && results[activeResultFileId]) {
-      const r = results[activeResultFileId];
-      if (resolvedSubpName && buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
-      if (!resolvedSubpName) return r;
-    }
-    // Try activeFileId
-    if (activeFileId && results[activeFileId]) {
-      const r = results[activeFileId];
-      if (resolvedSubpName && buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
-      if (!resolvedSubpName) return r;
-    }
-    // Search all results for one that contains this subprogram
-    if (resolvedSubpName) {
-      for (const r of Object.values(results)) {
-        if (buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
-      }
-    }
-    // Last resort: most recent
-    const vals = Object.values(results);
-    return vals.length > 0 ? vals[vals.length - 1] : null;
-  })();
-
-  // Resolve subprogram name — from store first, then search all parse results
+  // Resolve subprogram name FIRST — from store, then search all parse results by ID substring
   const resolvedSubpName = (() => {
     if (selectedSub?.name) return selectedSub.name;
     if (!selectedSubprogramId) return '';
-    // Search all parsed results for a subprogram whose name appears in the ID
     for (const result of Object.values(results)) {
       for (const subs of Object.values(result.analysis?.subprogram_index || {})) {
         for (const s of subs) {
@@ -546,6 +520,25 @@ export const TestCasePanel: React.FC = () => {
       }
     }
     return '';
+  })();
+
+  // Resolve active analysis — find the result that actually contains this subprogram
+  const activeResult = (() => {
+    if (activeResultFileId && results[activeResultFileId]) {
+      const r = results[activeResultFileId];
+      if (!resolvedSubpName || buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+    }
+    if (activeFileId && results[activeFileId]) {
+      const r = results[activeFileId];
+      if (!resolvedSubpName || buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+    }
+    if (resolvedSubpName) {
+      for (const r of Object.values(results)) {
+        if (buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
+      }
+    }
+    const vals = Object.values(results);
+    return vals.length > 0 ? vals[vals.length - 1] : null;
   })();
   const harnessTemplate = (() => {
     if (!resolvedSubpName || !activeResult?.analysis?.test_harness_data) return null;
