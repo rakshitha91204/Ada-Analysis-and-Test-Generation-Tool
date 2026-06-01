@@ -23,14 +23,17 @@ import { analyzeFiles, checkHealth } from '../utils/apiClient';
 import type { AdaFile } from '../types/file.types';
 import type { Subprogram } from '../types/subprogram.types';
 
-// Cache backend availability — re-check every 30 s
+// Cache backend availability — re-check every 5 s (short to recover quickly after restart)
 let backendAvailable: boolean | null = null;
+let backendCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function isBackendAvailable(): Promise<boolean> {
   if (backendAvailable !== null) return backendAvailable;
   const health = await checkHealth();
   backendAvailable = health !== null && health.libadalang_available === true;
-  setTimeout(() => { backendAvailable = null; }, 30_000);
+  // Clear cache after 5 s so a restarted backend is detected quickly
+  if (backendCheckTimer) clearTimeout(backendCheckTimer);
+  backendCheckTimer = setTimeout(() => { backendAvailable = null; }, 5_000);
   return backendAvailable;
 }
 
@@ -128,7 +131,9 @@ export function useFileParser() {
           return;
         } catch (backendErr) {
           console.warn('[useFileParser] Backend failed, falling back:', backendErr);
-          backendAvailable = false;
+          // Reset cache immediately so next click retries the backend
+          backendAvailable = null;
+          if (backendCheckTimer) { clearTimeout(backendCheckTimer); backendCheckTimer = null; }
         }
       }
 
