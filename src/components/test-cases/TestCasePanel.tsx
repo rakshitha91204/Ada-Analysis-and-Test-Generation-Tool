@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { RefreshCw, Download, Play, ChevronDown, BarChart2, Code2 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
@@ -493,7 +493,8 @@ const SkeletonCard: React.FC = () => (
 
 // ── Main TestCasePanel ────────────────────────────────────────────────────────
 export const TestCasePanel: React.FC = () => {
-  const { subprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
+  const { subprograms: storeSubprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
+  const { setSubprograms } = useSubprogramStore();
   const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory, setCurrentTests, generateTests } = useTestCaseStore();
   const [generating, setGenerating] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -502,11 +503,33 @@ export const TestCasePanel: React.FC = () => {
   const dragTo   = useRef<number|null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number|null>(null);
 
-  const selectedSub = subprograms.find(s => s.id === selectedSubprogramId);
-  const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId]||[]) : [];
-
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
+
+  // Build subprograms from parse store when the subprogram store is empty
+  // This handles the case where the file was parsed but the store was cleared
+  const parseStoreSubprograms = useMemo(() => {
+    const subs: import('../../types/subprogram.types').Subprogram[] = [];
+    for (const result of Object.values(results)) {
+      if (result.subprograms?.length > 0) {
+        subs.push(...result.subprograms);
+      }
+    }
+    return subs;
+  }, [results]);
+
+  // Use store subprograms if available, otherwise fall back to parse store subprograms
+  const subprograms = storeSubprograms.length > 0 ? storeSubprograms : parseStoreSubprograms;
+
+  // If store is empty but parse store has data, sync them back into the store
+  useEffect(() => {
+    if (storeSubprograms.length === 0 && parseStoreSubprograms.length > 0) {
+      setSubprograms(parseStoreSubprograms);
+    }
+  }, [storeSubprograms.length, parseStoreSubprograms, setSubprograms]);
+
+  const selectedSub = subprograms.find(s => s.id === selectedSubprogramId);
+  const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId]||[]) : [];
 
   // Resolve subprogram name FIRST — from store, then search all parse results by ID substring
   const resolvedSubpName = (() => {
