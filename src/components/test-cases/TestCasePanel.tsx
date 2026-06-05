@@ -258,15 +258,47 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     });
   }, [subpName, analysis]); // eslint-disable-line
 
-  const autoGen = () => {
+  // Track which autofill strategy to use next (cycles: normal → edge → boundary → random)
+  const autoFillStrategyRef = useRef<'normal'|'edge'|'boundary'|'random'>('normal');
+  const strategyOrder: Array<'normal'|'edge'|'boundary'|'random'> = ['normal','edge','boundary','random'];
+
+  const autoGen = async () => {
     if (!studioSubp) return;
+
+    const strategy = autoFillStrategyRef.current;
+    // Advance to next strategy for next click
+    const nextIdx = (strategyOrder.indexOf(strategy) + 1) % strategyOrder.length;
+    autoFillStrategyRef.current = strategyOrder[nextIdx];
+
+    try {
+      // Use the backend autofill API for smart type-aware values
+      const res = await studioPost<{
+        values: Record<string,string>;
+        strategy: string;
+        all_strategies?: Record<string,Record<string,string>>;
+      }>('/autofill', { subprogram: studioSubp.name, strategy });
+
+      if (res.values && Object.keys(res.values).length > 0) {
+        setInputs(prev => ({ ...prev, ...res.values }));
+        return;
+      }
+    } catch {
+      // Fall through to local fallback
+    }
+
+    // Local fallback — use constraint data
     const next: Record<string,string> = {};
     studioSubp.params.filter(p => p.dir === 'in' || p.dir === 'in out').forEach(p => {
       const c = p.constraint;
-      if (c.kind === 'integer') next[p.name] = String(Math.floor(Math.random() * Math.min((c.max??255), 255)));
-      else if (c.kind === 'float') next[p.name] = (Math.random()*10).toFixed(2);
-      else if (c.kind === 'boolean') next[p.name] = Math.random()>0.5 ? 'True' : 'False';
-      else next[p.name] = typeDefault(p.type);
+      if (c.kind === 'integer') {
+        const lo = c.min ?? 0, hi = Math.min(c.max ?? 255, 32767);
+        const mid = Math.floor((lo + hi) / 2);
+        next[p.name] = String(strategy === 'edge' ? lo : strategy === 'boundary' ? hi : mid);
+      } else if (c.kind === 'float')   next[p.name] = strategy === 'edge' ? '0.0' : '1.0';
+      else if (c.kind === 'boolean')   next[p.name] = strategy === 'edge' ? 'False' : 'True';
+      else if (c.kind === 'character') next[p.name] = "'A'";
+      else if (c.kind === 'string')    next[p.name] = strategy === 'edge' ? '""' : '"Hello"';
+      else next[p.name] = '0';
     });
     setInputs(next);
   };
@@ -274,8 +306,19 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const runTest = async () => {
     if (!studioSubp) return;
     setRunning(true);
-    const res = await studioPost<TestRunResult>('/test/run', { subprogram: subpName, inputs, expected });
-    const entry: TestRunResult = { ...res, subprogram: subpName, timestamp: new Date().toLocaleTimeString(), inputs, expected };
+    // Use the actual name from the enriched subprogram (correct casing)
+    const res = await studioPost<TestRunResult>('/test/run', {
+      subprogram: studioSubp.name,
+      inputs,
+      expected,
+    });
+    const entry: TestRunResult = {
+      ...res,
+      subprogram: studioSubp.name,
+      timestamp: new Date().toLocaleTimeString(),
+      inputs,
+      expected,
+    };
     setLastResult(entry);
     setHistory(h => [entry, ...h]);
     setRunning(false);
@@ -444,7 +487,9 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
             <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}>
               ▶ {running ? 'running...' : 'run test'}
             </button>
-            {!hasNoParams && <button className="ts-btn" onClick={autoGen}>✨ auto-fill</button>}
+            {!hasNoParams && <button className="ts-btn" onClick={autoGen}>
+              ✨ auto-fill <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>({autoFillStrategyRef.current})</span>
+            </button>}
             {!hasNoParams && <button className="ts-btn" onClick={() => {
               const blob = new Blob([JSON.stringify(inputs, null, 2)], {type:'application/json'});
               const a = document.createElement('a'); a.href = URL.createObjectURL(blob);

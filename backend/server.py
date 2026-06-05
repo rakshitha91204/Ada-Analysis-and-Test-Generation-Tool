@@ -518,6 +518,140 @@ def api_list_subprograms():
     return JSONResponse(_build_enriched_subprograms())
 
 
+# ── Test studio: smart auto-fill ──────────────────────────────────────────────
+@app.post("/api/autofill")
+async def api_autofill(request: Request):
+    """
+    Generate smart test input values for a subprogram's parameters.
+    Uses type constraints, boundary values, and coverage strategies.
+    Returns multiple fill strategies: normal, edge, boundary.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    subp_name = (body.get("subprogram") or "").strip()
+    strategy  = (body.get("strategy") or "normal").strip()  # normal | edge | boundary | random
+
+    subp = _get_subprogram_from_session(subp_name)
+    if not subp:
+        # Try case-insensitive match
+        for s in _build_enriched_subprograms():
+            if s["name"].lower() == subp_name.lower():
+                subp = s
+                break
+    if not subp:
+        # Return smart defaults based on name hints even without session data
+        return JSONResponse({
+            "subprogram": subp_name,
+            "strategy": strategy,
+            "values": {},
+            "all_strategies": {"normal": {}, "edge": {}, "boundary": {}, "random": {}},
+            "params": [],
+            "note": f"Subprogram '{subp_name}' not found in session. Upload and parse the file first.",
+        })
+
+    import random
+    import math
+
+    def smart_value(param_name: str, type_str: str, strat: str) -> str:
+        """Generate a smart value for an Ada parameter based on its type and strategy."""
+        c = _type_constraint(type_str)
+        kind = c.get("kind", "unknown")
+
+        if kind == "integer":
+            lo, hi = c["min"], c["max"]
+            if strat == "edge":
+                # Edge: min, max, 0, -1, 1
+                choices = [lo, hi]
+                if lo <= 0 <= hi:  choices.append(0)
+                if lo <= 1 <= hi:  choices.append(1)
+                if lo <= -1 <= hi: choices.append(-1)
+                return str(random.choice(choices))
+            elif strat == "boundary":
+                # Boundary: min, min+1, max-1, max
+                choices = [lo, min(lo+1, hi), max(hi-1, lo), hi]
+                return str(random.choice(choices))
+            elif strat == "random":
+                return str(random.randint(lo, min(hi, lo + 1000)))
+            else:  # normal
+                # Use a representative mid-range value
+                mid = (lo + hi) // 2
+                spread = max(1, (hi - lo) // 4)
+                return str(random.randint(
+                    max(lo, mid - spread),
+                    min(hi, mid + spread)
+                ))
+
+        elif kind == "float":
+            if strat == "edge":   return random.choice(["0.0", "1.0", "-1.0", "0.001"])
+            elif strat == "boundary": return random.choice(["-3.4e38", "3.4e38", "0.0", "1.0"])
+            elif strat == "random":   return f"{random.uniform(-100.0, 100.0):.4f}"
+            else:                     return f"{random.uniform(0.0, 10.0):.2f}"
+
+        elif kind == "boolean":
+            if strat == "edge":   return "False"
+            elif strat == "boundary": return random.choice(["True", "False"])
+            else:                     return random.choice(["True", "False"])
+
+        elif kind == "character":
+            if strat == "edge":   return random.choice(["' '", "'A'", "'Z'", "'0'", "'9'"])
+            elif strat == "boundary": return random.choice(["' '", chr(127) if False else "'~'"])
+            else:                     return "'" + random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") + "'"
+
+        elif kind == "string":
+            if strat == "edge":   return '""'
+            elif strat == "boundary": return '"A"'
+            elif strat == "random":
+                length = random.randint(1, 10)
+                s = "".join(random.choice("ABCDEFGabcdefg0123456") for _ in range(length))
+                return '"' + s + '"'
+            else:                     return '"Hello"'
+
+        else:
+            # Unknown type — try to detect from name hints
+            tl = type_str.lower()
+            pn = param_name.lower()
+            if "font" in tl or "font" in pn:     return "Default_Font"
+            if "color" in tl or "color" in pn:   return "0"
+            if "buffer" in tl or "buf" in pn:    return "Default_Buffer"
+            if "point" in tl or "pos" in pn:     return "(0, 0)"
+            if "width" in tl or "height" in tl:  return "1"
+            if "size" in tl or "len" in pn:       return "1"
+            if "index" in pn or "idx" in pn:      return "1"
+            if "count" in pn or "num" in pn:      return "1"
+            return "0"
+
+    # Build values for all strategies
+    strategies_out = {}
+    for strat in ["normal", "edge", "boundary", "random"]:
+        values: dict[str, str] = {}
+        for p in subp.get("params", []):
+            if p["dir"] in ("in", "in out"):
+                values[p["name"]] = smart_value(p["name"], p["type"], strat)
+        strategies_out[strat] = values
+
+    # Return the requested strategy as primary, others as alternatives
+    return JSONResponse({
+        "subprogram": subp_name,
+        "strategy": strategy,
+        "values": strategies_out.get(strategy, strategies_out["normal"]),
+        "all_strategies": strategies_out,
+        "params": [
+            {
+                "name": p["name"],
+                "type": p["type"],
+                "dir": p["dir"],
+                "constraint": p["constraint"],
+                "suggested": strategies_out["normal"].get(p["name"], "0"),
+            }
+            for p in subp.get("params", [])
+            if p["dir"] in ("in", "in out")
+        ],
+    })
+
+
 # ── Test studio: run a test ───────────────────────────────────────────────────
 @app.post("/api/test/run")
 async def api_run_test(request: Request):
