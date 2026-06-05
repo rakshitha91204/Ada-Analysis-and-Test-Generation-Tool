@@ -38,6 +38,7 @@ interface StudioSubprogram {
 interface TestRunResult {
   id?: string; subprogram: string; timestamp: string;
   status: 'pass'|'fail'|'error'; message: string;
+  explanation?: string;
   actual: Record<string,string>; elapsed_ms: number;
   violations?: Array<{variable:string;type:string;value:string;error:string}>;
   normalized_types?: Record<string,string>;
@@ -207,8 +208,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const [history,    setHistory]    = useState<TestRunResult[]>([]);
   const [activeTab,  setActiveTab]  = useState<'inputs'|'variables'|'history'>('inputs');
 
-  // Build enriched subprogram directly from the local analysis result.
-  // Also auto-switches to variables tab when subprogram has no parameters.
+  // Build enriched subprogram — local parse store first, then API
   useEffect(() => {
     if (!subpName || !analysis) { setStudioSubp(null); return; }
 
@@ -217,28 +217,41 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       const inPs = found.params.filter(p => p.dir === 'in' || p.dir === 'in out');
       const outPs = found.params.filter(p => p.dir === 'out' || p.dir === 'in out');
       const hasNoParams = inPs.length === 0 && outPs.length === 0;
-
       const init: Record<string,string> = {};
       inPs.forEach(p => { init[p.name] = typeDefault(p.type); });
       setInputs(init);
-
       const exp: Record<string,string> = {};
       outPs.forEach(p => { exp[p.name] = typeDefault(p.type); });
       setExpected(exp);
-
       setLastResult(null);
       setActiveTab(hasNoParams ? 'variables' : 'inputs');
     };
 
-    // Try the provided analysis first
+    // 1. Try local parse store (fastest — no network)
     const local = buildStudioSubprogram(subpName, analysis);
-    if (local) { applySubp(local); return; }
+    if (local) {
+      applySubp(local);
+      // Also try to enrich from API in background (has richer constraint data)
+      studioGet<StudioSubprogram[]>('/subprograms').then(list => {
+        const api = list.find(s =>
+          s.name === local.name || s.name.toLowerCase() === local.name.toLowerCase()
+        );
+        if (api && api.params.length >= local.params.length) {
+          // API has richer param data — merge variables from local into API result
+          const merged: StudioSubprogram = {
+            ...api,
+            variables: api.variables.length > 0 ? api.variables : local.variables,
+          };
+          applySubp(merged);
+        }
+      }).catch(() => {/* API not available — local data is fine */});
+      return;
+    }
 
-    // Fallback: try backend /api/subprograms (path-based Test Studio flow)
+    // 2. Fallback: API only
     studioGet<StudioSubprogram[]>('/subprograms').then(list => {
       const found = list.find(s =>
-        s.name === subpName ||
-        s.name.toLowerCase() === subpName.toLowerCase()
+        s.name === subpName || s.name.toLowerCase() === subpName.toLowerCase()
       );
       if (found) applySubp(found);
       else setStudioSubp(null);
@@ -328,10 +341,9 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
             </div>
           ) : (
             <>
+              {/* IN PARAMETERS */}
               {inParams.length > 0 && <>
-                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
-                  in parameters — set test values
-                </div>
+                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>in parameters — set test values</div>
                 <div className="ts-input-grid" style={{ marginBottom: 12 }}>
                   {inParams.map(p => (
                     <div key={p.name} className="ts-input-card">
@@ -339,13 +351,12 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                         <span className="ts-input-dir">{p.dir}</span>
                         <span className="ts-input-name">{p.name}</span>
                       </div>
-                      <div className="ts-input-type ts-mono">
-                        {p.type} <CaseBadge type={p.type} />
-                      </div>
+                      <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
                       {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
                       {p.constraint.kind === 'boolean'
                         ? <select className="ts-input-field"
-                            value={inputs[p.name]??'False'} onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}>
+                            value={inputs[p.name]??'False'}
+                            onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}>
                             <option>False</option><option>True</option>
                           </select>
                         : <input className="ts-input-field"
@@ -358,6 +369,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                 </div>
               </>}
 
+              {/* OUT PARAMETERS */}
               {outParams.length > 0 && <>
                 <div className="ts-section-label" style={{ padding: '0 0 8px' }}>expected output values</div>
                 <div className="ts-input-grid" style={{ marginBottom: 12 }}>
@@ -369,10 +381,57 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       </div>
                       <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
                       {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
-                      <input className="ts-input-field"
-                        type="text" value={expected[p.name]??typeDefault(p.type)}
+                      <input className="ts-input-field" type="text"
+                        value={expected[p.name]??typeDefault(p.type)}
                         onChange={e => setExpected(ex => ({...ex,[p.name]:e.target.value}))}
                         placeholder="expected value" />
+                    </div>
+                  ))}
+                </div>
+              </>}
+
+              {/* LOCAL VARIABLES — shown inline as read-only context */}
+              {studioSubp.variables.filter(v => v.scope === 'local').length > 0 && <>
+                <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#52525b' }}>
+                  local variables — declared in subprogram
+                </div>
+                <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                  {studioSubp.variables.filter(v => v.scope === 'local').map((v, i) => (
+                    <div key={i} className="ts-input-card" style={{ opacity: 0.7 }}>
+                      <div className="ts-input-header">
+                        <span className="ts-input-dir" style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 9 }}>local</span>
+                        <span className="ts-input-name">{v.name}</span>
+                      </div>
+                      <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
+                      {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
+                      <input className="ts-input-field ts-mono"
+                        value={typeDefault(v.type)}
+                        readOnly
+                        style={{ opacity: 0.6, cursor: 'default', background: 'transparent' }}
+                        title="Local variable — default initial value shown" />
+                    </div>
+                  ))}
+                </div>
+              </>}
+
+              {/* CONSTANTS — shown with their value */}
+              {studioSubp.variables.filter(v => v.scope === 'constant').length > 0 && <>
+                <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#52525b' }}>
+                  constants
+                </div>
+                <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                  {studioSubp.variables.filter(v => v.scope === 'constant').map((v, i) => (
+                    <div key={i} className="ts-input-card" style={{ borderColor: 'rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.05)' }}>
+                      <div className="ts-input-header">
+                        <span className="ts-input-dir" style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b', fontSize: 9 }}>const</span>
+                        <span className="ts-input-name">{v.name}</span>
+                      </div>
+                      <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
+                      <input className="ts-input-field ts-mono"
+                        value={typeDefault(v.type)}
+                        readOnly
+                        style={{ opacity: 0.7, cursor: 'default', borderColor: 'rgba(245,158,11,0.3)' }}
+                        title="Constant — value is fixed at declaration" />
                     </div>
                   ))}
                 </div>
@@ -380,41 +439,57 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
             </>
           )}
 
-          {/* Buttons — always shown */}
+          {/* Buttons */}
           <div className="ts-btn-row" style={{ paddingLeft: 0, paddingRight: 0 }}>
             <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}>
               ▶ {running ? 'running...' : 'run test'}
             </button>
             {!hasNoParams && <button className="ts-btn" onClick={autoGen}>✨ auto-fill</button>}
             {!hasNoParams && <button className="ts-btn" onClick={() => {
-              const blob = new Blob([JSON.stringify(inputs,null,2)],{type:'application/json'});
+              const blob = new Blob([JSON.stringify(inputs, null, 2)], {type:'application/json'});
               const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
               a.download = `${studioSubp.name}_inputs.json`; a.click();
             }}>⬇ export inputs</button>}
           </div>
 
-          {/* Result box */}
+          {/* Result box — with explanation */}
           {lastResult && (
             <div className={`ts-result-box ts-result-${lastResult.status}`} style={{ marginTop: 12, marginLeft: 0, marginRight: 0 }}>
               <div className="ts-result-header">
                 <StatusDot status={lastResult.status} />
-                <span>{lastResult.message}</span>
+                <span style={{ fontWeight: 600 }}>
+                  {lastResult.status === 'pass' ? '✓ PASS' : lastResult.status === 'fail' ? '✗ FAIL' : '⚠ ERROR'}
+                </span>
+                <span style={{ fontWeight: 400, fontSize: 11 }}>{lastResult.message}</span>
                 <span className="ts-result-time">{lastResult.elapsed_ms}ms</span>
               </div>
-              {(lastResult.violations?.length??0) > 0 && (
+
+              {/* Explanation */}
+              {lastResult.explanation && (
+                <div style={{ fontSize: 11, padding: '6px 0 8px', opacity: 0.85, lineHeight: 1.5, fontFamily: 'inherit' }}>
+                  {lastResult.explanation}
+                </div>
+              )}
+
+              {/* Type violations */}
+              {(lastResult.violations?.length ?? 0) > 0 && (
                 <ul className="ts-violation-list">
-                  {lastResult.violations!.map((v,i) => (
+                  {lastResult.violations!.map((v, i) => (
                     <li key={i} className="ts-mono">{v.variable} ({v.type}): {v.error}</li>
                   ))}
                 </ul>
               )}
-              {Object.keys(lastResult.actual||{}).length > 0 && (
-                <div className="ts-result-table ts-mono">
-                  {Object.entries(lastResult.actual).map(([k,v]) => (
+
+              {/* Actual vs expected */}
+              {Object.keys(lastResult.actual || {}).length > 0 && (
+                <div className="ts-result-table ts-mono" style={{ marginTop: 6 }}>
+                  {Object.entries(lastResult.actual).map(([k, v]) => (
                     <div key={k} className="ts-result-row">
-                      <span>{k}</span>
-                      <span className="ts-result-expected">expected: {expected[k]}</span>
-                      <span className={`ts-result-actual ${v===expected[k]?'ok':'bad'}`}>actual: {v}</span>
+                      <span style={{ minWidth: 80 }}>{k}</span>
+                      <span className="ts-result-expected">expected: {expected[k] ?? '—'}</span>
+                      <span className={`ts-result-actual ${v === expected[k] ? 'ok' : 'bad'}`}>
+                        actual: {v}
+                      </span>
                     </div>
                   ))}
                 </div>

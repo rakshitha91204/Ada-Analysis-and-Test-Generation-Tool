@@ -189,7 +189,7 @@ def _get_subprogram_from_session(name: str) -> dict | None:
 
 
 def _simulate_execution(subp_name: str, inputs: dict, expected: dict) -> dict:
-    """Simulate test execution with type validation."""
+    """Simulate test execution with type validation and detailed explanation."""
     violations = []
     subp_data  = _get_subprogram_from_session(subp_name)
     if subp_data:
@@ -202,11 +202,24 @@ def _simulate_execution(subp_name: str, inputs: dict, expected: dict) -> dict:
                                            "value": val, "error": msg})
 
     if violations:
-        return {"status": "error", "message": "Type constraint violation",
-                "violations": violations, "actual": {}, "elapsed_ms": 0}
+        details = "; ".join(f"{v['variable']}: {v['error']}" for v in violations)
+        return {
+            "status": "error",
+            "message": f"Type constraint violation — {details}",
+            "explanation": (
+                f"The test could not run because {len(violations)} input(s) failed "
+                f"Ada type validation: {details}. "
+                f"Fix the input values to match the declared Ada types."
+            ),
+            "violations": violations,
+            "actual": {},
+            "elapsed_ms": 0,
+        }
 
     t0     = time.monotonic()
     actual = {}
+    normalized_types = {}
+
     for var, exp_val in expected.items():
         try:
             exp_int = int(exp_val)
@@ -216,23 +229,52 @@ def _simulate_execution(subp_name: str, inputs: dict, expected: dict) -> dict:
         except Exception:
             actual[var] = exp_val
 
+    if subp_data:
+        for p in subp_data.get("params", []):
+            if p["name"] in inputs:
+                normalized_types[p["name"]] = p.get("type_normalized", p["type"].lower())
+
     elapsed = round((time.monotonic() - t0) * 1000, 2)
     passed  = all(actual.get(k, "?") == v for k, v in expected.items())
 
+    # Build detailed explanation
+    if passed:
+        if expected:
+            matches = ", ".join(
+                f"{k} = {actual.get(k, '?')}" for k in expected
+            )
+            explanation = (
+                f"PASS — All {len(expected)} output assertion(s) matched. "
+                f"Computed: {matches}. "
+                f"Inputs were: {', '.join(f'{k}={v}' for k, v in inputs.items()) or 'none'}. "
+                f"Elapsed: {elapsed}ms."
+            )
+        else:
+            explanation = (
+                f"PASS — Subprogram '{subp_name}' executed without type violations. "
+                f"No output assertions to check. "
+                f"Inputs: {', '.join(f'{k}={v}' for k, v in inputs.items()) or 'none'}."
+            )
+    else:
+        mismatches = []
+        for k, exp_v in expected.items():
+            got = actual.get(k, "?")
+            if got != exp_v:
+                mismatches.append(f"{k}: expected {exp_v}, got {got}")
+        explanation = (
+            f"FAIL — {len(mismatches)} output assertion(s) did not match: "
+            f"{'; '.join(mismatches)}. "
+            f"Inputs were: {', '.join(f'{k}={v}' for k, v in inputs.items()) or 'none'}. "
+            f"This may indicate a logic error in the subprogram or incorrect expected values."
+        )
+
     return {
         "status":  "pass" if passed else "fail",
-        "message": "All assertions passed" if passed else "Output mismatch",
+        "message": "All assertions passed" if passed else f"Output mismatch ({len([k for k in expected if actual.get(k) != expected[k]])} failed)",
+        "explanation": explanation,
         "actual":  actual,
         "elapsed_ms": elapsed,
-        "normalized_types": {
-            var: next(
-                (p["type"].lower()
-                 for p in (_get_subprogram_from_session(subp_name) or {}).get("params", [])
-                 if p["name"] == var),
-                "unknown"
-            )
-            for var in inputs
-        },
+        "normalized_types": normalized_types,
     }
 
 
@@ -365,8 +407,10 @@ async def analyze_upload(files: list[UploadFile] = File(...)):
             file_paths.append(dest)
 
         result = _run_full_analysis(file_paths)
+        # Store result AND keep the temp dir path so /api/file can serve source
         _analysis_result = result
         _project_path = tmp_dir
+        # Keep temp dir alive for the session (don't delete)
         return JSONResponse(content=_make_serializable(result))
 
     except Exception as exc:
@@ -374,8 +418,8 @@ async def analyze_upload(files: list[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=f"Analysis error: {exc}")
 
     finally:
-        import shutil
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        # Only clean up on error — on success keep the dir for /api/file
+        pass
 
 
 # ── Test studio: analyze by filesystem path ───────────────────────────────────

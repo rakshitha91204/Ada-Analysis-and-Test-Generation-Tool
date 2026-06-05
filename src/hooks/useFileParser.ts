@@ -85,7 +85,7 @@ function backendSubprogramsToStore(
 }
 
 export function useFileParser() {
-  const { updateFileStatus } = useFileStore();
+  const { updateFileStatus, files: allFiles } = useFileStore();
   const { setSubprograms, subprograms } = useSubprogramStore();
   const { setResult, syncToFile } = useParseStore();
   const subprogramsRef = useRef(subprograms);
@@ -106,7 +106,18 @@ export function useFileParser() {
       if (useBackend) {
         // ── Backend (libadalang) path ────────────────────────────────────────
         try {
-          const analysisResult = await analyzeFiles([{ name: file.name, content: file.content }]);
+          // Send ALL Ada files together so the backend can resolve cross-file
+          // references between .adb and .ads files for accurate analysis.
+          const filesToSend = allFiles
+            .filter(f => f.content && (f.name.endsWith('.adb') || f.name.endsWith('.ads') || f.name.endsWith('.ada')))
+            .map(f => ({ name: f.name, content: f.content }));
+
+          // Ensure the clicked file is included
+          if (!filesToSend.find(f => f.name === file.name)) {
+            filesToSend.push({ name: file.name, content: file.content });
+          }
+
+          const analysisResult = await analyzeFiles(filesToSend);
 
           // Use richer subprogram data from backend subprogram_index
           const subs = backendSubprogramsToStore(analysisResult, file.id);
