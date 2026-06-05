@@ -262,44 +262,75 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const autoFillStrategyRef = useRef<'normal'|'edge'|'boundary'|'random'>('normal');
   const strategyOrder: Array<'normal'|'edge'|'boundary'|'random'> = ['normal','edge','boundary','random'];
 
+  /** Smart default for any Ada type using name + type hints */
+  const smartDefault = (paramName: string, type: string, c: TypeConstraint, strategy: string): string => {
+    const tl = type.toLowerCase();
+    const pl = paramName.toLowerCase();
+
+    if (c.kind === 'integer') {
+      const lo = c.min ?? 0, hi = c.max ?? 255;
+      const mid = Math.floor((lo + hi) / 2);
+      const spread = Math.max(1, Math.floor((hi - lo) / 4));
+      if (strategy === 'edge')     return String(Math.random() > 0.5 ? lo : hi);
+      if (strategy === 'boundary') return String(Math.random() > 0.5 ? lo : Math.max(hi - 1, lo));
+      if (strategy === 'random')   return String(lo + Math.floor(Math.random() * Math.min(1000, hi - lo + 1)));
+      return String(mid - spread + Math.floor(Math.random() * spread * 2));
+    }
+    if (c.kind === 'float')    return strategy === 'edge' ? '0.0' : (Math.random() * 10).toFixed(2);
+    if (c.kind === 'boolean')  return strategy === 'edge' ? 'False' : (Math.random() > 0.5 ? 'True' : 'False');
+    if (c.kind === 'character') {
+      if (strategy === 'edge') return "' '";
+      return "'" + 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random()*52)] + "'";
+    }
+    if (c.kind === 'string')   return strategy === 'edge' ? '""' : '"Hello"';
+
+    // Unknown type — use name/type hints (same logic as backend)
+    if (tl.includes('font')    || pl.includes('font'))    return 'Default_Font';
+    if (tl.includes('buffer')  || pl.includes('buffer') || pl.includes('buf')) return 'Default_Buffer';
+    if (tl.includes('color')   || pl.includes('color'))   return '0';
+    if (tl.includes('point')   || pl === 'start' || pl === 'pos' || pl.includes('position')) return '(0, 0)';
+    if (tl.includes('bitmap')  || pl.includes('bitmap'))  return 'Default_Bitmap';
+    if (pl.includes('width')   || pl.includes('height'))  return '1';
+    if (pl.includes('size')    || pl.includes('length'))  return '1';
+    if (pl.includes('index')   || pl.includes('idx'))     return '1';
+    if (pl.includes('count')   || pl.includes('num'))     return '1';
+    if (pl.includes('offset'))                            return '0';
+    if (pl.includes('char')    || tl.includes('char'))    return "'A'";
+    if (pl.includes('str')     || tl.includes('string'))  return '"Hello"';
+    return '0';
+  };
+
   const autoGen = async () => {
     if (!studioSubp) return;
 
     const strategy = autoFillStrategyRef.current;
-    // Advance to next strategy for next click
     const nextIdx = (strategyOrder.indexOf(strategy) + 1) % strategyOrder.length;
     autoFillStrategyRef.current = strategyOrder[nextIdx];
 
     try {
-      // Use the backend autofill API for smart type-aware values
+      // Try the backend API first
       const res = await studioPost<{
         values: Record<string,string>;
         strategy: string;
-        all_strategies?: Record<string,Record<string,string>>;
+        note?: string;
       }>('/autofill', { subprogram: studioSubp.name, strategy });
 
+      // Only use API values if non-empty (session has this subprogram)
       if (res.values && Object.keys(res.values).length > 0) {
         setInputs(prev => ({ ...prev, ...res.values }));
         return;
       }
     } catch {
-      // Fall through to local fallback
+      // Fall through to local
     }
 
-    // Local fallback — use constraint data
+    // Local fallback — uses smartDefault with name+type hints
     const next: Record<string,string> = {};
-    studioSubp.params.filter(p => p.dir === 'in' || p.dir === 'in out').forEach(p => {
-      const c = p.constraint;
-      if (c.kind === 'integer') {
-        const lo = c.min ?? 0, hi = Math.min(c.max ?? 255, 32767);
-        const mid = Math.floor((lo + hi) / 2);
-        next[p.name] = String(strategy === 'edge' ? lo : strategy === 'boundary' ? hi : mid);
-      } else if (c.kind === 'float')   next[p.name] = strategy === 'edge' ? '0.0' : '1.0';
-      else if (c.kind === 'boolean')   next[p.name] = strategy === 'edge' ? 'False' : 'True';
-      else if (c.kind === 'character') next[p.name] = "'A'";
-      else if (c.kind === 'string')    next[p.name] = strategy === 'edge' ? '""' : '"Hello"';
-      else next[p.name] = '0';
-    });
+    studioSubp.params
+      .filter(p => p.dir === 'in' || p.dir === 'in out')
+      .forEach(p => {
+        next[p.name] = smartDefault(p.name, p.type, p.constraint, strategy);
+      });
     setInputs(next);
   };
 
