@@ -306,21 +306,58 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const runTest = async () => {
     if (!studioSubp) return;
     setRunning(true);
-    // Use the actual name from the enriched subprogram (correct casing)
-    const res = await studioPost<TestRunResult>('/test/run', {
-      subprogram: studioSubp.name,
-      inputs,
-      expected,
-    });
-    const entry: TestRunResult = {
-      ...res,
-      subprogram: studioSubp.name,
-      timestamp: new Date().toLocaleTimeString(),
-      inputs,
-      expected,
-    };
-    setLastResult(entry);
-    setHistory(h => [entry, ...h]);
+
+    try {
+      const res = await studioPost<TestRunResult & { error?: string }>('/test/run', {
+        subprogram: studioSubp.name,
+        inputs,
+        expected,
+      });
+
+      // Handle backend error response
+      if ((res as { error?: string }).error) {
+        const errMsg = (res as { error: string }).error;
+        const entry: TestRunResult = {
+          subprogram: studioSubp.name,
+          timestamp: new Date().toLocaleTimeString(),
+          status: 'error',
+          message: 'Backend error',
+          explanation: errMsg,
+          actual: {},
+          elapsed_ms: 0,
+          inputs,
+          expected,
+        };
+        setLastResult(entry);
+        setHistory(h => [entry, ...h]);
+        setRunning(false);
+        return;
+      }
+
+      const entry: TestRunResult = {
+        ...res,
+        subprogram: studioSubp.name,
+        timestamp: new Date().toLocaleTimeString(),
+        inputs,
+        expected,
+      };
+      setLastResult(entry);
+      setHistory(h => [entry, ...h]);
+    } catch (e) {
+      const entry: TestRunResult = {
+        subprogram: studioSubp.name,
+        timestamp: new Date().toLocaleTimeString(),
+        status: 'error',
+        message: 'Network error',
+        explanation: `Could not reach backend: ${(e as Error).message}. Make sure the backend is running on port 8001.`,
+        actual: {},
+        elapsed_ms: 0,
+        inputs,
+        expected,
+      };
+      setLastResult(entry);
+      setHistory(h => [entry, ...h]);
+    }
     setRunning(false);
   };
 
