@@ -1,0 +1,1894 @@
+{
+    "file_paths": [
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads"
+    ],
+    "subprogram_index": {
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb": [
+            {
+                "name": "Check_Pixel",
+                "parameters": [
+                    "Orida_In  : in  UINT16;\n      Aran_In   : in  uint16;\n      Karan_Out : out UInt16"
+                ],
+                "return_type": null,
+                "start_line": 30,
+                "end_line": 88
+            },
+            {
+                "name": "Update_Grid",
+                "parameters": [
+                    "Row    : in  NATURAL;\n      Col    : in  natural;\n      Result : out Natural"
+                ],
+                "return_type": null,
+                "start_line": 96,
+                "end_line": 151
+            },
+            {
+                "name": "Draw_Char",
+                "parameters": [
+                    "Buffer     : in out Bitmap_Buffer'Class;\n      Start      : Point;\n      Char       : Character;\n      Font       : BMP_Font;\n      Foreground : UInt32;\n      Background : UInt32"
+                ],
+                "return_type": null,
+                "start_line": 157,
+                "end_line": 203
+            },
+            {
+                "name": "Draw_String",
+                "parameters": [
+                    "Buffer     : in out Bitmap_Buffer'Class;\n      Start      : Point;\n      Msg        : String;\n      Font       : BMP_Font;\n      Foreground : Bitmap_Color;\n      Background : Bitmap_Color"
+                ],
+                "return_type": null,
+                "start_line": 209,
+                "end_line": 243
+            }
+        ],
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads": []
+    },
+    "call_graph": {
+        "Check_Pixel": [
+            "UINT16",
+            "uint16",
+            "UInt16",
+            "NATURAL",
+            "NATURAL",
+            "NATURAL",
+            "natural",
+            "natural",
+            "natural",
+            "natural",
+            "Natural",
+            "UINT16",
+            "uint16",
+            "UINT16",
+            "Natural"
+        ],
+        "Update_Grid": [
+            "INTEGER",
+            "integer",
+            "Integer",
+            "INTEGER",
+            "FLOAT",
+            "integer",
+            "float",
+            "Float",
+            "NATURAL",
+            "natural",
+            "NATURAL",
+            "natural",
+            "Natural",
+            "FLOAT",
+            "NATURAL",
+            "float",
+            "natural"
+        ],
+        "Draw_Char": [
+            "UINT16",
+            "uint16",
+            "BOOLEAN",
+            "boolean",
+            "UINT16",
+            "uint16",
+            "Char_Height",
+            "Char_Width",
+            "Data",
+            "Mask",
+            "Buffer.Set_Source",
+            "Word_To_Bitmap_Color",
+            "Buffer.Set_Pixel",
+            "Buffer.Set_Source",
+            "Word_To_Bitmap_Color",
+            "Buffer.Set_Pixel"
+        ],
+        "Draw_String": [
+            "Bitmap_Color_To_Word",
+            "Bitmap_Color_To_Word",
+            "Bitmap_Color_To_Word",
+            "NATURAL",
+            "natural",
+            "Char_Width",
+            "Draw_Char",
+            "Char_Width",
+            "UINT32",
+            "uint32"
+        ]
+    },
+    "global_read_write": {
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb": {
+            "read": [],
+            "write": []
+        },
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads": {
+            "read": [],
+            "write": []
+        }
+    },
+    "cyclomatic_complexity": {
+        "Check_Pixel": 5,
+        "Update_Grid": 4,
+        "Draw_Char": 6,
+        "Draw_String": 3
+    },
+    "dead_code": [
+        "Check_Pixel",
+        "Update_Grid",
+        "Draw_String"
+    ],
+    "variables_info": {
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb": {
+            "global_variables": {
+                "Check_Pixel": {
+                    "Orida": {
+                        "type": "UINT16"
+                    },
+                    "Aran": {
+                        "type": "uint16"
+                    },
+                    "Karan": {
+                        "type": "UInt16"
+                    },
+                    "FLAG_TOP": {
+                        "type": "BOOLEAN"
+                    },
+                    "flag_mid": {
+                        "type": "boolean"
+                    }
+                },
+                "Update_Grid": {
+                    "pos_x": {
+                        "type": "INTEGER"
+                    },
+                    "POS_Y": {
+                        "type": "integer"
+                    },
+                    "grid_row": {
+                        "type": "NATURAL"
+                    },
+                    "GRID_COL": {
+                        "type": "natural"
+                    },
+                    "ratio_a": {
+                        "type": "FLOAT"
+                    },
+                    "ratio_b": {
+                        "type": "float"
+                    },
+                    "RATIO_C": {
+                        "type": "Float"
+                    },
+                    "RATIO_A": {
+                        "type": "FLOAT"
+                    }
+                },
+                "Draw_Char": {
+                    "orida": {
+                        "type": "UINT16"
+                    },
+                    "ARAN": {
+                        "type": "uint16"
+                    },
+                    "flag_bot": {
+                        "type": "Boolean"
+                    }
+                },
+                "Draw_String": {
+                    "GRID_ROW": {
+                        "type": "NATURAL"
+                    },
+                    "grid_col": {
+                        "type": "natural"
+                    }
+                }
+            },
+            "global_constants": {
+                "Check_Pixel": {},
+                "Update_Grid": {},
+                "Draw_Char": {
+                    "Max_Orida": {
+                        "type": "UINT16"
+                    },
+                    "MIN_ARAN": {
+                        "type": "uint16"
+                    }
+                },
+                "Draw_String": {}
+            },
+            "local_variables": {
+                "Check_Pixel": {
+                    "Local_Orida": {
+                        "type": "UINT16"
+                    },
+                    "Local_Aran": {
+                        "type": "uint16"
+                    },
+                    "Local_Karan": {
+                        "type": "UInt16"
+                    },
+                    "Count_A": {
+                        "type": "NATURAL"
+                    },
+                    "Count_B": {
+                        "type": "natural"
+                    },
+                    "Count_C": {
+                        "type": "Natural"
+                    }
+                },
+                "Update_Grid": {
+                    "Step_A": {
+                        "type": "INTEGER"
+                    },
+                    "Step_B": {
+                        "type": "integer"
+                    },
+                    "Step_C": {
+                        "type": "Integer"
+                    },
+                    "Scale_A": {
+                        "type": "FLOAT"
+                    },
+                    "Scale_B": {
+                        "type": "float"
+                    },
+                    "Scale_C": {
+                        "type": "Float"
+                    },
+                    "Res_A": {
+                        "type": "NATURAL"
+                    },
+                    "Res_B": {
+                        "type": "natural"
+                    },
+                    "Res_C": {
+                        "type": "Natural"
+                    }
+                },
+                "Draw_Char": {
+                    "Px": {
+                        "type": "UINT16"
+                    },
+                    "Py": {
+                        "type": "uint16"
+                    },
+                    "Pz": {
+                        "type": "UInt16"
+                    },
+                    "Ok_A": {
+                        "type": "BOOLEAN"
+                    },
+                    "Ok_B": {
+                        "type": "boolean"
+                    },
+                    "Ok_C": {
+                        "type": "Boolean"
+                    }
+                },
+                "Draw_String": {
+                    "Count": {
+                        "type": "NATURAL"
+                    },
+                    "Tmp": {
+                        "type": "natural"
+                    },
+                    "Aux": {
+                        "type": "Natural"
+                    },
+                    "FG": {
+                        "type": "UINT32"
+                    },
+                    "BG": {
+                        "type": "uint32"
+                    },
+                    "Aux_FG": {
+                        "type": "UInt32"
+                    }
+                }
+            }
+        },
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads": {
+            "global_variables": {},
+            "global_constants": {},
+            "local_variables": {}
+        }
+    },
+    "control_flow_extractor": {
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb": {
+            "Check_Pixel": {
+                "if_conditions": [
+                    {
+                        "condition_text": "NATURAL (Local_Orida) = NATURAL (Local_Aran)",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "Local_Orida": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "UINT16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Check_Pixel",
+                                "initial_value": "0"
+                            },
+                            "NATURAL": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Local_Orida"
+                                ]
+                            },
+                            "Local_Aran": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "uint16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Check_Pixel",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "natural (Local_Orida) > natural (Local_Aran)",
+                        "branch_type": "elsif",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "Local_Orida": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "UINT16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Check_Pixel",
+                                "initial_value": "0"
+                            },
+                            "natural": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Local_Orida"
+                                ]
+                            },
+                            "Local_Aran": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "uint16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Check_Pixel",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "FLAG_TOP",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "FLAG_TOP": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "flag_mid",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "flag_mid": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "branch_body_variables": {
+                    "Local_Orida": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "UINT16"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "UINT16 (Orida_In)"
+                    },
+                    "Orida_In": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "UINT16": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Local_Aran": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "uint16"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "uint16 (Aran_In)"
+                    },
+                    "Aran_In": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "uint16": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Local_Karan": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "UInt16"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "UInt16 (Local_Orida + Local_Aran)"
+                    },
+                    "UInt16": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Count_A": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "NATURAL"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "Count_A + 1"
+                    },
+                    "NATURAL": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Count_B": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "natural"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "Count_B + 1"
+                    },
+                    "natural": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Count_C": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "Natural"
+                        },
+                        "used_in_branch": "elsif",
+                        "assigned_from": "Natural (Aran_In)"
+                    },
+                    "Natural": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "elsif"
+                    },
+                    "Karan_Out": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "Local_Karan"
+                    }
+                },
+                "procedure_calls": []
+            },
+            "Update_Grid": {
+                "if_conditions": [
+                    {
+                        "condition_text": "INTEGER (pos_x) > Step_A",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "pos_x": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "INTEGER": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "pos_x"
+                                ]
+                            },
+                            "Step_A": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "INTEGER"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Update_Grid",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "POS_Y < integer (Step_B)",
+                        "branch_type": "elsif",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "POS_Y": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Step_B": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "integer"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Update_Grid",
+                                "initial_value": "0"
+                            },
+                            "integer": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Step_B"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "NATURAL (grid_row) = natural (GRID_COL)",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "grid_row": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "NATURAL": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "grid_row"
+                                ]
+                            },
+                            "GRID_COL": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "natural": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "GRID_COL"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "ratio_a > FLOAT (Step_C)",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "ratio_a": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Step_C": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "Integer"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Update_Grid",
+                                "initial_value": "0"
+                            },
+                            "FLOAT": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Step_C"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "RATIO_C < float (Scale_C)",
+                        "branch_type": "elsif",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "RATIO_C": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Scale_C": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "Float"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Update_Grid",
+                                "initial_value": "1.0"
+                            },
+                            "float": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Scale_C"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "branch_body_variables": {
+                    "Step_A": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "INTEGER"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "INTEGER (Row)"
+                    },
+                    "Row": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "INTEGER": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Step_B": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "integer"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "integer (Col)"
+                    },
+                    "Col": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "integer": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Step_C": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "Integer"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "Integer (Row + Col)"
+                    },
+                    "Integer": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": ""
+                    },
+                    "Scale_A": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "FLOAT"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "FLOAT (Step_A) / 2.0"
+                    },
+                    "FLOAT": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Scale_B": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "float"
+                        },
+                        "used_in_branch": "elsif",
+                        "assigned_from": "float (Step_B) * 1.5"
+                    },
+                    "float": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "elsif"
+                    },
+                    "Res_A": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "NATURAL"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "Res_A + NATURAL (ratio_b)"
+                    },
+                    "NATURAL": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Res_B": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "natural"
+                        },
+                        "used_in_branch": "elsif",
+                        "assigned_from": "Res_B + natural (RATIO_A)"
+                    },
+                    "natural": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "ratio_b": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "RATIO_A": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "elsif"
+                    },
+                    "Result": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "",
+                        "assigned_from": "Res_C"
+                    },
+                    "Res_C": {
+                        "kind": "variable",
+                        "data_type": {
+                            "type": "Natural"
+                        },
+                        "used_in_branch": ""
+                    }
+                },
+                "procedure_calls": []
+            },
+            "Draw_Char": {
+                "if_conditions": [
+                    {
+                        "condition_text": "UINT16 (orida) > Px",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "orida": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "UINT16": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "orida"
+                                ]
+                            },
+                            "Px": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "UINT16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Draw_Char",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "uint16 (ARAN) < Py",
+                        "branch_type": "elsif",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "ARAN": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "uint16": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "ARAN"
+                                ]
+                            },
+                            "Py": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "uint16"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Draw_Char",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "BOOLEAN (Ok_A) = boolean (flag_bot)",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "Ok_A": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "BOOLEAN"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Draw_Char",
+                                "initial_value": "False"
+                            },
+                            "BOOLEAN": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Ok_A"
+                                ]
+                            },
+                            "flag_bot": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "boolean": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "flag_bot"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "0 .. Char_Height (Font) - 1",
+                        "branch_type": "for",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "Font": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Char_Height": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Font"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "0 .. Char_Width (Font) - 1",
+                        "branch_type": "for",
+                        "nesting_depth": 1,
+                        "variables": {
+                            "Font": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Char_Width": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Font"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "(Data (Font, Char, H) and Mask (Font, W)) /= 0",
+                        "branch_type": "if",
+                        "nesting_depth": 2,
+                        "variables": {
+                            "Font": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Char": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "H": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Data": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Font",
+                                    "Char",
+                                    "H"
+                                ]
+                            },
+                            "W": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "Mask": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "Font",
+                                    "W"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "branch_body_variables": {
+                    "Ok_A": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "BOOLEAN"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "True"
+                    },
+                    "True": {
+                        "kind": "enum_literal",
+                        "data_type": {
+                            "type": "Boolean"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Ok_B": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "boolean"
+                        },
+                        "used_in_branch": "elsif",
+                        "assigned_from": "True"
+                    },
+                    "Px": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "UINT16"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "UINT16 (Max_Orida)"
+                    },
+                    "Max_Orida": {
+                        "kind": "constant",
+                        "data_type": {
+                            "type": "UINT16"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "UINT16": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Py": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "uint16"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "uint16 (MIN_ARAN)"
+                    },
+                    "MIN_ARAN": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "uint16": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    }
+                },
+                "procedure_calls": [
+                    {
+                        "name": "Buffer.Set_Source",
+                        "data_type": "procedure",
+                        "args": [
+                            "Word_To_Bitmap_Color (Buffer.Color_Mode, Foreground)"
+                        ],
+                        "called_in": "then"
+                    },
+                    {
+                        "name": "Buffer.Set_Pixel",
+                        "data_type": "procedure",
+                        "args": [
+                            "(Start.X + W, Start.Y + H)"
+                        ],
+                        "called_in": "then"
+                    }
+                ]
+            },
+            "Draw_String": {
+                "if_conditions": [
+                    {
+                        "condition_text": "NATURAL (GRID_ROW) > Count",
+                        "branch_type": "if",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "GRID_ROW": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            },
+                            "NATURAL": {
+                                "kind": "call",
+                                "data_type": {
+                                    "type": "procedure"
+                                },
+                                "args": [
+                                    "GRID_ROW"
+                                ]
+                            },
+                            "Count": {
+                                "kind": "variable",
+                                "data_type": {
+                                    "type": "NATURAL"
+                                },
+                                "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                                "scope": "Draw_String",
+                                "initial_value": "0"
+                            }
+                        }
+                    },
+                    {
+                        "condition_text": "Msg",
+                        "branch_type": "for",
+                        "nesting_depth": 0,
+                        "variables": {
+                            "Msg": {
+                                "kind": "unresolved",
+                                "data_type": {
+                                    "type": "Unknown"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "branch_body_variables": {
+                    "Tmp": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "natural"
+                        },
+                        "used_in_branch": "then",
+                        "assigned_from": "natural (grid_col)"
+                    },
+                    "grid_col": {
+                        "kind": "rhs_reference",
+                        "data_type": {
+                            "type": "Unknown"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "natural": {
+                        "kind": "call",
+                        "data_type": {
+                            "type": "procedure"
+                        },
+                        "used_in_branch": "then"
+                    },
+                    "Count": {
+                        "kind": "assignment",
+                        "data_type": {
+                            "type": "NATURAL"
+                        },
+                        "used_in_branch": "loop_body",
+                        "assigned_from": "Count + 1"
+                    }
+                },
+                "procedure_calls": [
+                    {
+                        "name": "Draw_Char",
+                        "data_type": "procedure",
+                        "args": [
+                            "Buffer",
+                            "(Start.X + Count * Char_Width (Font), Start.Y)",
+                            "C",
+                            "Font",
+                            "UINT32 (FG)",
+                            "uint32 (BG)"
+                        ],
+                        "called_in": "loop_body"
+                    }
+                ]
+            }
+        },
+        "__registry__": {
+            "types": {},
+            "objects": {
+                "Local_Orida": {
+                    "name": "Local_Orida",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UINT16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Local_Aran": {
+                    "name": "Local_Aran",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "uint16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Local_Karan": {
+                    "name": "Local_Karan",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UInt16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Count_A": {
+                    "name": "Count_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "NATURAL"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Count_B": {
+                    "name": "Count_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Count_C": {
+                    "name": "Count_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Check_Pixel",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Step_A": {
+                    "name": "Step_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "INTEGER"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Step_B": {
+                    "name": "Step_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "integer"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Step_C": {
+                    "name": "Step_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Integer"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Scale_A": {
+                    "name": "Scale_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "FLOAT"
+                    },
+                    "initial_value": "1.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Scale_B": {
+                    "name": "Scale_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "float"
+                    },
+                    "initial_value": "1.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Scale_C": {
+                    "name": "Scale_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Float"
+                    },
+                    "initial_value": "1.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Res_A": {
+                    "name": "Res_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "NATURAL"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Res_B": {
+                    "name": "Res_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Res_C": {
+                    "name": "Res_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Update_Grid",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Px": {
+                    "name": "Px",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UINT16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Py": {
+                    "name": "Py",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "uint16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Pz": {
+                    "name": "Pz",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UInt16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ok_A": {
+                    "name": "Ok_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "BOOLEAN"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ok_B": {
+                    "name": "Ok_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "boolean"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ok_C": {
+                    "name": "Ok_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Boolean"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_Char",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Count": {
+                    "name": "Count",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "NATURAL"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Tmp": {
+                    "name": "Tmp",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Aux": {
+                    "name": "Aux",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "FG": {
+                    "name": "FG",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "UINT32"
+                    },
+                    "initial_value": "Bitmap_Color_To_Word (Buffer.Color_Mode, Foreground)",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "BG": {
+                    "name": "BG",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "uint32"
+                    },
+                    "initial_value": "Bitmap_Color_To_Word (Buffer.Color_Mode, Background)",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Aux_FG": {
+                    "name": "Aux_FG",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "UInt32"
+                    },
+                    "initial_value": "Bitmap_Color_To_Word (Buffer.Color_Mode, Foreground)",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb",
+                    "scope": "Draw_String",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Orida": {
+                    "name": "Orida",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UINT16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Aran": {
+                    "name": "Aran",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "uint16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Karan": {
+                    "name": "Karan",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "UInt16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Grid_Row": {
+                    "name": "Grid_Row",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "NATURAL"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Grid_Col": {
+                    "name": "Grid_Col",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Grid_Depth": {
+                    "name": "Grid_Depth",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Natural"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Flag_Top": {
+                    "name": "Flag_Top",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "BOOLEAN"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Flag_Mid": {
+                    "name": "Flag_Mid",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "boolean"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Flag_Bot": {
+                    "name": "Flag_Bot",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Boolean"
+                    },
+                    "initial_value": "False",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Pos_X": {
+                    "name": "Pos_X",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "INTEGER"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Pos_Y": {
+                    "name": "Pos_Y",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "integer"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Pos_Z": {
+                    "name": "Pos_Z",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Integer"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ratio_A": {
+                    "name": "Ratio_A",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "FLOAT"
+                    },
+                    "initial_value": "0.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ratio_B": {
+                    "name": "Ratio_B",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "float"
+                    },
+                    "initial_value": "0.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Ratio_C": {
+                    "name": "Ratio_C",
+                    "kind": "variable",
+                    "data_type": {
+                        "type": "Float"
+                    },
+                    "initial_value": "0.0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Max_Orida": {
+                    "name": "Max_Orida",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "UINT16"
+                    },
+                    "initial_value": "255",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Min_Aran": {
+                    "name": "Min_Aran",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "uint16"
+                    },
+                    "initial_value": "0",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                },
+                "Def_Karan": {
+                    "name": "Def_Karan",
+                    "kind": "constant",
+                    "data_type": {
+                        "type": "UInt16"
+                    },
+                    "initial_value": "128",
+                    "declared_in": "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads",
+                    "scope": "global",
+                    "possible_values": [],
+                    "value_count": 0,
+                    "range_str": ""
+                }
+            },
+            "enum_literals": {}
+        }
+    },
+    "loop_info": {
+        "Check_Pixel": 0,
+        "Update_Grid": 0,
+        "Draw_Char": 2,
+        "Draw_String": 1
+    },
+    "exceptions_info": {
+        "Check_Pixel": 0,
+        "Update_Grid": 0,
+        "Draw_Char": 0,
+        "Draw_String": 0
+    },
+    "concurrency_info": {
+        "tasks": [],
+        "protected_objects": []
+    },
+    "logical_errors": [],
+    "performance_warnings": [
+        "Heavy function calls inside loop",
+        "Heavy function calls inside loop"
+    ],
+    "test_harness_data": {
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.adb": [
+            {
+                "test_name": "test_Check_Pixel",
+                "original_subprogram": "Check_Pixel",
+                "template": "procedure test_Check_Pixel is\nbegin\n    -- TODO: Initialize inputs\n    Check_Pixel(...);\n    -- TODO: Add assertions\nend test_Check_Pixel;"
+            },
+            {
+                "test_name": "test_Update_Grid",
+                "original_subprogram": "Update_Grid",
+                "template": "procedure test_Update_Grid is\nbegin\n    -- TODO: Initialize inputs\n    Update_Grid(...);\n    -- TODO: Add assertions\nend test_Update_Grid;"
+            },
+            {
+                "test_name": "test_Draw_Char",
+                "original_subprogram": "Draw_Char",
+                "template": "procedure test_Draw_Char is\nbegin\n    -- TODO: Initialize inputs\n    Draw_Char(...);\n    -- TODO: Add assertions\nend test_Draw_Char;"
+            },
+            {
+                "test_name": "test_Draw_String",
+                "original_subprogram": "Draw_String",
+                "template": "procedure test_Draw_String is\nbegin\n    -- TODO: Initialize inputs\n    Draw_String(...);\n    -- TODO: Add assertions\nend test_Draw_String;"
+            }
+        ],
+        "/home/oops/Desktop/email/test/auto_ada_tester/testada_caseinsensitive/bitmapped_drawing.ads": []
+    },
+    "mock_stub_data": {
+        "Draw_Char": "procedure Draw_Char is\nbegin\n    -- Mock implementation\n    null;\nend Draw_Char;",
+        "Bitmap_Color_To_Word": "procedure Bitmap_Color_To_Word is\nbegin\n    -- Mock implementation\n    null;\nend Bitmap_Color_To_Word;",
+        "Natural": "procedure Natural is\nbegin\n    -- Mock implementation\n    null;\nend Natural;",
+        "boolean": "procedure boolean is\nbegin\n    -- Mock implementation\n    null;\nend boolean;",
+        "Buffer.Set_Source": "procedure Buffer.Set_Source is\nbegin\n    -- Mock implementation\n    null;\nend Buffer.Set_Source;",
+        "FLOAT": "procedure FLOAT is\nbegin\n    -- Mock implementation\n    null;\nend FLOAT;",
+        "uint16": "procedure uint16 is\nbegin\n    -- Mock implementation\n    null;\nend uint16;",
+        "UINT32": "procedure UINT32 is\nbegin\n    -- Mock implementation\n    null;\nend UINT32;",
+        "NATURAL": "procedure NATURAL is\nbegin\n    -- Mock implementation\n    null;\nend NATURAL;",
+        "Float": "procedure Float is\nbegin\n    -- Mock implementation\n    null;\nend Float;",
+        "UInt16": "procedure UInt16 is\nbegin\n    -- Mock implementation\n    null;\nend UInt16;",
+        "Data": "procedure Data is\nbegin\n    -- Mock implementation\n    null;\nend Data;",
+        "integer": "procedure integer is\nbegin\n    -- Mock implementation\n    null;\nend integer;",
+        "natural": "procedure natural is\nbegin\n    -- Mock implementation\n    null;\nend natural;",
+        "Word_To_Bitmap_Color": "procedure Word_To_Bitmap_Color is\nbegin\n    -- Mock implementation\n    null;\nend Word_To_Bitmap_Color;",
+        "BOOLEAN": "procedure BOOLEAN is\nbegin\n    -- Mock implementation\n    null;\nend BOOLEAN;",
+        "uint32": "procedure uint32 is\nbegin\n    -- Mock implementation\n    null;\nend uint32;",
+        "Buffer.Set_Pixel": "procedure Buffer.Set_Pixel is\nbegin\n    -- Mock implementation\n    null;\nend Buffer.Set_Pixel;",
+        "Char_Width": "procedure Char_Width is\nbegin\n    -- Mock implementation\n    null;\nend Char_Width;",
+        "Char_Height": "procedure Char_Height is\nbegin\n    -- Mock implementation\n    null;\nend Char_Height;",
+        "Integer": "procedure Integer is\nbegin\n    -- Mock implementation\n    null;\nend Integer;",
+        "float": "procedure float is\nbegin\n    -- Mock implementation\n    null;\nend float;",
+        "UINT16": "procedure UINT16 is\nbegin\n    -- Mock implementation\n    null;\nend UINT16;",
+        "INTEGER": "procedure INTEGER is\nbegin\n    -- Mock implementation\n    null;\nend INTEGER;",
+        "Mask": "procedure Mask is\nbegin\n    -- Mock implementation\n    null;\nend Mask;"
+    }
+}

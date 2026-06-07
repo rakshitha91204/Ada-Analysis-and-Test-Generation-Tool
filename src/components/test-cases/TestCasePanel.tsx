@@ -567,22 +567,30 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
 
           {/* Result box — with explanation */}
           {lastResult && (
-            <div className={`ts-result-box ts-result-${lastResult.status}`} style={{ marginTop: 12, marginLeft: 0, marginRight: 0 }}>
+            <div className={`ts-result-box ts-result-${lastResult.status || 'error'}`} style={{ marginTop: 12, marginLeft: 0, marginRight: 0 }}>
               <div className="ts-result-header">
-                <StatusDot status={lastResult.status} />
+                <StatusDot status={lastResult.status || 'error'} />
                 <span style={{ fontWeight: 600 }}>
-                  {lastResult.status === 'pass' ? '✓ PASS' : lastResult.status === 'fail' ? '✗ FAIL' : '⚠ ERROR'}
+                  {lastResult.status === 'pass' ? '✓ PASS'
+                   : lastResult.status === 'fail' ? '✗ FAIL'
+                   : '⚠ ERROR'}
                 </span>
-                <span style={{ fontWeight: 400, fontSize: 11 }}>{lastResult.message}</span>
-                <span className="ts-result-time">{lastResult.elapsed_ms}ms</span>
+                {lastResult.message && (
+                  <span style={{ fontWeight: 400, fontSize: 11 }}>{lastResult.message}</span>
+                )}
+                <span className="ts-result-time">{lastResult.elapsed_ms ?? 0}ms</span>
               </div>
 
-              {/* Explanation */}
-              {lastResult.explanation && (
-                <div style={{ fontSize: 11, padding: '6px 0 8px', opacity: 0.85, lineHeight: 1.5, fontFamily: 'inherit' }}>
-                  {lastResult.explanation}
-                </div>
-              )}
+              {/* Explanation — always show something useful */}
+              <div style={{ fontSize: 11, padding: '6px 0 8px', lineHeight: 1.5, fontFamily: 'inherit',
+                color: lastResult.status === 'pass' ? '#4ade80' : lastResult.status === 'fail' ? '#f87171' : '#fbbf24' }}>
+                {lastResult.explanation
+                  || (lastResult.status === 'pass'
+                    ? `✓ Test passed. Subprogram "${studioSubp.name}" executed successfully.`
+                    : lastResult.status === 'fail'
+                    ? `✗ Test failed. Check your expected output values against the actual results.`
+                    : `⚠ Could not run test. The backend may not have "${studioSubp.name}" in its current session. Upload and parse the source file first.`)}
+              </div>
 
               {/* Type violations */}
               {(lastResult.violations?.length ?? 0) > 0 && (
