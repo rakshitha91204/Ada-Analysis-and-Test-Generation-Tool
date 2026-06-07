@@ -47,15 +47,19 @@ export const ParsedJsonPanel: React.FC = () => {
     : null;
   const isParsing = activeFile && (activeFile.status === 'parsing' || activeFile.status === 'pending');
 
-  // Detect stale/cached JSON — check for duplicate subprogram names
+  // Detect stale/cached JSON — check for TRUE duplicates (same name AND same params)
+  // Overloaded subprograms (same name, different params) are valid Ada - not duplicates
   const isStaleJson = (() => {
     if (!activeResult) return false;
     try {
       const d = JSON.parse(activeResult.jsonText);
       const fp = d.file_paths?.[0] ?? '';
       const subs = d.subprogram_index?.[fp] ?? [];
-      const names = subs.map((s: {name: string}) => s.name);
-      return names.length !== new Set(names).size; // duplicates = stale
+      // A true duplicate has same name AND same start_line (nested body indexed twice)
+      const signatures = subs.map((s: {name: string; start_line?: number}) =>
+        `${s.name}::${s.start_line ?? 0}`
+      );
+      return signatures.length !== new Set(signatures).size;
     } catch { return false; }
   })();
 
@@ -429,14 +433,14 @@ export const ParsedJsonPanel: React.FC = () => {
             </button>
           </div>
 
-          {/* Stale JSON warning — shown when duplicates detected (old cached data) */}
+          {/* Stale JSON warning — shown when TRUE duplicates detected (same name + same line) */}
           {isStaleJson && (
             <div
               className="flex items-center gap-2 px-3 py-2 flex-shrink-0 text-[10px] font-mono"
               style={{ background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}
             >
               <AlertCircle size={12} className="flex-shrink-0" />
-              <span className="flex-1">This JSON is from a previous session — duplicate subprograms detected.</span>
+              <span className="flex-1">Stale data — duplicate subprograms at same line. Re-parse to get fresh analysis.</span>
               <button
                 onClick={handleReParse}
                 disabled={reparsing}
@@ -448,6 +452,30 @@ export const ParsedJsonPanel: React.FC = () => {
               </button>
             </div>
           )}
+
+          {/* Spec-only info — shown when .ads file has no variables/control flow data */}
+          {!isStaleJson && activeResult && (() => {
+            try {
+              const d = JSON.parse(activeResult.jsonText);
+              const fp = d.file_paths?.[0] ?? '';
+              const isSpecOnly = fp.endsWith('.ads');
+              const hasVars = (d.variables_info?.[fp]?.locals?.length ?? 0) > 0 ||
+                              (d.variables_info?.[fp]?.locals?.length ?? -1) > -1;
+              const hasCF = Object.keys(d.control_flow_extractor?.[fp] ?? {}).length > 0;
+              if (isSpecOnly && !hasCF) {
+                return (
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0 text-[10px] font-mono"
+                    style={{ background: 'rgba(96,165,250,0.06)', borderBottom: '1px solid rgba(96,165,250,0.15)', color: '#93c5fd' }}
+                  >
+                    <span style={{ fontSize: 11 }}>ℹ</span>
+                    <span>Spec file (.ads) — upload the matching .adb body file too for variables &amp; control flow data</span>
+                  </div>
+                );
+              }
+            } catch { /* ignore */ }
+            return null;
+          })()}
 
           {/* JSON error banner */}
           {jsonError && (
