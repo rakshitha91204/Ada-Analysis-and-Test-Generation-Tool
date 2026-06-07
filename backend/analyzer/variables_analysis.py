@@ -37,6 +37,19 @@ def _is_package_level(node) -> bool:
     return True
 
 
+def _enclosing_subp_name(node) -> str:
+    """Return the name of the innermost enclosing subprogram body, or ''."""
+    p = node.parent
+    while p:
+        if isinstance(p, lal.SubpBody):
+            try:
+                return p.f_subp_spec.f_subp_name.text.strip()
+            except Exception:
+                return "<subprogram>"
+        p = p.parent
+    return ""
+
+
 def _fmt_subtype_indication(node) -> str:
     """Format a SubtypeIndication (or any type-expression node) as a compact string."""
     if node is None:
@@ -253,28 +266,7 @@ class TypeRegistry:
 
             elif isinstance(tdef, lal.RecordTypeDef):
                 info.kind = "record"
-                try:
-                    for comp in tdef.findall(lal.ComponentDecl):
-                        if not comp.f_component_def:
-                            continue
-                        te = comp.f_component_def.f_type_expr
-                        type_str = _fmt_subtype_indication(te)
-                        type_name = "Unknown"
-                        try:
-                            if isinstance(te, lal.SubtypeIndication) and te.f_name:
-                                type_name = te.f_name.text.strip()
-                            else:
-                                type_name = type_str.split()[0]
-                        except Exception:
-                            pass
-                        for ident in comp.f_ids:
-                            fname2 = ident.text.strip()
-                            info.fields[fname2] = _FieldInfo(
-                                name=fname2, type_name=type_name,
-                                type_str=type_str, declared_in=fname,
-                            )
-                except Exception as e:
-                    info.extra["field_error"] = str(e)
+                self._collect_record_fields(tdef, info, fname)
 
             elif isinstance(tdef, lal.SignedIntTypeDef):
                 info.kind = "integer"
@@ -330,6 +322,33 @@ class TypeRegistry:
 
         self._types[tname] = info
 
+    def _collect_record_fields(self, tdef, info: _TypeInfo, fname: str):
+        """Collect all ComponentDecl fields from a RecordTypeDef into info.fields."""
+        try:
+            for comp in tdef.findall(lal.ComponentDecl):
+                if not comp.f_component_def:
+                    continue
+                te = comp.f_component_def.f_type_expr
+                type_str = _fmt_subtype_indication(te)
+                type_name = "Unknown"
+                try:
+                    if isinstance(te, lal.SubtypeIndication) and te.f_name:
+                        type_name = te.f_name.text.strip()
+                    elif isinstance(te, lal.AnonymousType):
+                        type_name = type_str.split()[0]
+                    else:
+                        type_name = type_str.split()[0]
+                except Exception:
+                    pass
+                for ident in comp.f_ids:
+                    fname2 = ident.text.strip()
+                    info.fields[fname2] = _FieldInfo(
+                        name=fname2, type_name=type_name,
+                        type_str=type_str, declared_in=fname,
+                    )
+        except Exception as e:
+            info.extra["field_error"] = str(e)
+
     def _register_subtype(self, st, fname: str):
         sname    = st.f_name.text.strip()
         raw_node = getattr(st, "f_subtype", None) or getattr(st, "f_type_expr", None)
@@ -376,29 +395,17 @@ class TypeRegistry:
             return type_str or type_name or "Unknown"
 
         if info.kind == "record":
-            out = {}
-            for fname, finfo in info.fields.items():
-                out[fname] = self.expand_type(finfo.type_name, finfo.type_str, depth + 1)
-            return {info.name: out}
+            return self._expand_record(info, depth)
 
         if info.kind == "array":
-            expanded = self.expand_type(
-                info.element_type_name, info.element_type_str, depth + 1
-            )
-            return {info.name: expanded}
+            return self._expand_array(info, depth)
 
         if info.kind == "subtype":
             parent = self._resolve_chain(info.base_type)
             if parent and parent.kind == "record":
-                out = {}
-                for fname, finfo in parent.fields.items():
-                    out[fname] = self.expand_type(finfo.type_name, finfo.type_str, depth + 1)
-                return {parent.name: out}
+                return self._expand_record(parent, depth)
             if parent and parent.kind == "array":
-                expanded = self.expand_type(
-                    parent.element_type_name, parent.element_type_str, depth + 1
-                )
-                return {parent.name: expanded}
+                return self._expand_array(parent, depth)
             return info.base_type_str or type_str or type_name or "Unknown"
 
         if info.kind == "enum":
@@ -429,6 +436,20 @@ class TypeRegistry:
             return s
 
         return type_str or type_name or "Unknown"
+
+    def _expand_record(self, info: _TypeInfo, depth: int) -> dict:
+        """Return a dict mapping field_name → expanded type."""
+        out: dict = {}
+        for fname, finfo in info.fields.items():
+            out[fname] = self.expand_type(finfo.type_name, finfo.type_str, depth + 1)
+        return {info.name: out}
+
+    def _expand_array(self, info: _TypeInfo, depth: int):
+        """Expand array element type; returns {ArrayName: expanded_element}."""
+        expanded = self.expand_type(
+            info.element_type_name, info.element_type_str, depth + 1
+        )
+        return {info.name: expanded}
 
     def expand_object(self, type_str: str):
         """Entry point: expand a variable's type string into nested dict or plain string."""
@@ -463,6 +484,102 @@ class TypeRegistry:
                 "base_type_str":      v.base_type_str,
             }
         return out
+
+
+# ── Scope classifier ──────────────────────────────────────────────────────────
+
+def _classify_scope(obj_node) -> str:
+    """
+    Classify an ObjectDecl's scope:
+      'constant' — has 'constant' keyword (anywhere)
+      'global'   — package-level non-constant
+      'local'    — subprogram-level
+    """
+    try:
+        if obj_node.f_has_constant.kind_name == "ConstantPresent":
+            return "constant"
+    except Exception:
+        pass
+    if _is_package_level(obj_node):
+        return "global"
+    return "local"
+
+
+# ── VariablesExtractor — clean per-file extraction using TypeRegistry ─────────
+
+class VariablesExtractor:
+    """
+    Scans all ObjectDecl nodes in every unit and organises them into:
+        global_variables  — package-level, non-constant
+        global_constants  — package-level, constant
+        local_variables   — subprogram-level
+    Each variable value is the result of TypeRegistry.expand_object(),
+    which produces a nested dict for record/array types or a plain
+    type string for scalar types.
+
+    This class mirrors the VariablesExtractor from test/test.py.
+    It is used internally by VariablesAnalyzer and can also be used
+    standalone when you only need the simple per-file variable dict.
+    """
+
+    def __init__(self, units: list, registry: TypeRegistry):
+        self.units = units
+        self.reg   = registry
+
+    def run(self) -> dict:
+        """Return variables_info dict keyed by filename."""
+        result: dict = {}
+        for unit in self.units:
+            if not unit.root:
+                continue
+            result[unit.filename] = self._extract_file(unit)
+        return result
+
+    def _extract_file(self, unit) -> dict:
+        global_vars:   dict = {}
+        global_consts: dict = {}
+        local_vars:    dict = {}
+
+        try:
+            for obj in unit.root.findall(lal.ObjectDecl):
+                self._process_obj(obj, global_vars, global_consts, local_vars)
+        except Exception:
+            pass
+
+        return {
+            "global_variables": global_vars,
+            "global_constants": global_consts,
+            "local_variables":  local_vars,
+        }
+
+    def _process_obj(self, obj, gv: dict, gc: dict, lv: dict):
+        """Process one ObjectDecl into the appropriate bucket."""
+        scope    = _classify_scope(obj)
+        type_str = _best_type_str(obj)
+        expanded = self.reg.expand_object(type_str)
+
+        # Determine owning subprogram name for locals
+        subp_name = _enclosing_subp_name(obj) if scope == "local" else ""
+
+        for ident in obj.f_ids:
+            vname = ident.text.strip()
+            if not vname:
+                continue
+            value = {
+                "type":          type_str,
+                "expanded_type": expanded,
+            }
+            if subp_name:
+                value["subprogram"] = subp_name
+
+            if scope == "constant":
+                gc[vname] = value
+            elif scope == "global":
+                gv[vname] = value
+            else:
+                # Group locals by subprogram name
+                bucket = lv.setdefault(subp_name, {})
+                bucket[vname] = value
 
 
 # ── Main analyzer ─────────────────────────────────────────────────────────────
@@ -676,6 +793,9 @@ class VariablesAnalyzer:
                 for subp_n in all_subp_names
             }
 
+            # ── VariablesExtractor simple dict (from test/test.py pattern) ──
+            extractor_result = VariablesExtractor([unit], registry)._extract_file(unit)
+
             result[filename] = {
                 "globals":      globals_list,
                 "locals":       locals_list,
@@ -691,8 +811,15 @@ class VariablesAnalyzer:
                 "global_variables": legacy_global_vars,
                 "global_constants": legacy_global_consts,
                 "local_variables":  legacy_local_vars,
+                # Structured extractor output (subprogram-grouped, with expanded_type)
+                "variables_by_scope": extractor_result,
                 # Type registry for cross-file field type resolution
                 "__registry__": registry.to_dict(),
             }
 
         return result
+
+    # Alias so callers can use either .extract() or .run()
+    def run(self) -> dict:
+        """Alias for extract() — matches test/test.py VariablesAnalyzer.run() API."""
+        return self.extract()
