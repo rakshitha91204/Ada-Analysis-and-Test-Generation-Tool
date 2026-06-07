@@ -7,6 +7,10 @@ class ComplexityAnalyzer:
         self.units = units
 
     def compute(self) -> dict:
+        """
+        Returns a flat dict: { "SubpName": int_score, ... }
+        The flat int-keyed format is what the frontend expects.
+        """
         result = {}
 
         for unit in self.units:
@@ -34,18 +38,10 @@ class ComplexityAnalyzer:
 
                 try:
                     name = subp.f_subp_spec.f_subp_name.text
-                    line = subp.sloc_range.start.line
                 except Exception:
                     name = "UNKNOWN"
-                    line = 0
 
-                risk = "low" if complexity <= 5 else "medium" if complexity <= 10 else "high"
-                # Keep legacy flat dict key for backward compat
+                # Only store flat int — the frontend renders this directly
                 result[name] = complexity
-                # Also store enriched key
-                result[f"{unit.filename}::{name}"] = {
-                    "score": complexity, "name": name,
-                    "file": unit.filename, "line": line, "risk": risk,
-                }
 
         return result

@@ -56,7 +56,7 @@ export const EditorLayout: React.FC = () => {
           <TestCasePanel />
         </div>
         <div
-          className="absolute inset-0 tab-content overflow-auto"
+          className="absolute inset-0 tab-content overflow-hidden"
           style={{ opacity: activeTab === 'analysis' ? 1 : 0, pointerEvents: activeTab === 'analysis' ? 'auto' : 'none' }}
         >
           <AnalysisOutput />

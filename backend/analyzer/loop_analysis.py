@@ -17,6 +17,10 @@ class LoopAnalyzer:
         return depth
 
     def detect(self) -> dict:
+        """
+        Returns flat dict: { "SubpName": int_loop_count, ... }
+        The frontend reads loop_info as Record<string, number>.
+        """
         result = {}
 
         for unit in self.units:
@@ -26,36 +30,10 @@ class LoopAnalyzer:
                 except Exception:
                     subp_name = "UNKNOWN"
 
-                loops = []
-                for loop_cls, kind in [
-                    (lal.ForLoopStmt,   "for"),
-                    (lal.WhileLoopStmt, "while"),
-                    (lal.LoopStmt,      "loop"),
-                ]:
-                    for loop in subp.findall(loop_cls):
-                        try:
-                            line = loop.sloc_range.start.line
-                        except Exception:
-                            line = 0
-                        has_exit = bool(
-                            list(loop.findall(lal.ExitStmt)) or
-                            list(loop.findall(lal.ReturnStmt)) or
-                            list(loop.findall(lal.RaiseStmt))
-                        )
-                        loops.append({
-                            "kind":          kind,
-                            "line":          line,
-                            "nesting_depth": self._nesting_depth(loop),
-                            "has_exit":      has_exit,
-                        })
+                count = 0
+                for loop_cls in [lal.ForLoopStmt, lal.WhileLoopStmt, lal.LoopStmt]:
+                    count += len(list(subp.findall(loop_cls)))
 
-                # Legacy compat: also store flat count keyed by subp name
-                result[subp_name] = len(loops)
-                if loops:
-                    result[f"{unit.filename}::{subp_name}"] = {
-                        "subprogram": subp_name,
-                        "file":       unit.filename,
-                        "loops":      loops,
-                    }
+                result[subp_name] = count
 
         return result

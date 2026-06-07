@@ -38,8 +38,9 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   const analysis = activeResult?.analysis;
   const hasBackendData = !!analysis;
 
-  // ── Dead code ──────────────────────────────────────────────────────────────
-  const deadCode: string[] = analysis?.dead_code ?? [];
+  // ── Dead code — only keep string entries ──────────────────────────────────
+  const rawDeadCode = analysis?.dead_code ?? [];
+  const deadCode: string[] = rawDeadCode.filter((x: unknown) => typeof x === 'string') as string[];
 
   // ── Bug report ─────────────────────────────────────────────────────────────
   const bugReport = analysis?.bug_report;
@@ -54,12 +55,21 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   // ── Performance warnings ───────────────────────────────────────────────────
   const perfWarnings: string[] = analysis?.performance_warnings ?? [];
 
-  // ── Cyclomatic complexity ──────────────────────────────────────────────────
-  const complexityMap: Record<string, number> = analysis?.cyclomatic_complexity ?? {};
+  // ── Cyclomatic complexity — only keep numeric entries ─────────────────────
+  const complexityMap: Record<string, number> = {};
+  for (const [k, v] of Object.entries(analysis?.cyclomatic_complexity ?? {})) {
+    if (typeof v === 'number') complexityMap[k] = v;
+  }
 
-  // ── Loop & exception info ──────────────────────────────────────────────────
-  const loopInfo: Record<string, number> = analysis?.loop_info ?? {};
-  const exceptionsInfo: Record<string, number> = analysis?.exceptions_info ?? {};
+  // ── Loop & exception info — only keep numeric entries ─────────────────────
+  const loopInfo: Record<string, number> = {};
+  for (const [k, v] of Object.entries(analysis?.loop_info ?? {})) {
+    if (typeof v === 'number') loopInfo[k] = v;
+  }
+  const exceptionsInfo: Record<string, number> = {};
+  for (const [k, v] of Object.entries(analysis?.exceptions_info ?? {})) {
+    if (typeof v === 'number') exceptionsInfo[k] = v;
+  }
 
   // ── Concurrency ────────────────────────────────────────────────────────────
   const tasks: string[] = analysis?.concurrency_info?.tasks ?? [];
@@ -123,7 +133,8 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3" style={{ background: 'var(--bg-base)' }}>
+    <div className="h-full overflow-y-auto" style={{ background: 'var(--bg-base)' }}>
+      <div className="flex flex-col gap-3 p-3">{/* inner flex column */}
       {/* Header: source badge + timestamp */}
       <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-600">
         <Clock size={10} />
@@ -586,6 +597,7 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
           </div>
         </div>
       )}
+      </div>{/* end inner flex column */}
     </div>
   );
 };
