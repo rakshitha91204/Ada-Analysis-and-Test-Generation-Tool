@@ -1045,9 +1045,10 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
 
     dead_code             = DeadCodeDetector(callgraph, public_subps).detect_unused_subprograms()
     cyclomatic_complexity = ComplexityAnalyzer(units).compute()
-    control_flow          = ControlFlowExtractor(units).run()
     loop_info             = LoopAnalyzer(units).detect()
     variables_info        = VariablesAnalyzer(units).extract()
+    # Pass variables_info so control flow can resolve variable types
+    control_flow          = ControlFlowExtractor(units).run(variables_info=variables_info)
     global_read_write     = GlobalRWDetector(units).detect()
     exceptions_info       = ExceptionAnalyzer(units).detect()
     concurrency_info      = ConcurrencyAnalyzer(units).analyze()
