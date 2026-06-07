@@ -1,7 +1,4 @@
-# ── ADA-Test-master (original messy source — superseded by backend/) ──────────
-ADA-Test-master/
-
-
+# ── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/
 frontend/node_modules/
 dist/
@@ -9,7 +6,7 @@ dist-ssr/
 .vite/
 *.tsbuildinfo
 
-# ── Backend ───────────────────────────────────────────────────────────────────
+# ── Python / Backend ─────────────────────────────────────────────────────────
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -37,25 +34,20 @@ venv/
 .venv/
 env/
 ENV/
-ADA-Test-master/venv/
+email/venv/
 
-# Analysis output files (generated at runtime)
+# Analysis output files (generated at runtime — not source)
 backend/analysis_output.json
 backend/output.json
-ADA-Test-master/analysis_output.json
-ADA-Test-master/output.json
-ADA-Test-master/1.json
-ADA-Test-master/2.json
-ADA-Test-master/3.json
-ADA-Test-master/4.json
-ADA-Test-master/5.json
+analysis_output.json
+output.json
 
 # ── Environment & secrets ─────────────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
 
-# ── Editor & OS ───────────────────────────────────────────────────────────────
+# ── Editor & OS ──────────────────────────────────────────────────────────────
 .vscode/settings.json
 .idea/
 *.suo
@@ -66,12 +58,13 @@ ADA-Test-master/5.json
 .DS_Store
 Thumbs.db
 
-# ── Logs ──────────────────────────────────────────────────────────────────────
+# ── Logs & temp ───────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# ── Temp / installer ──────────────────────────────────────────────────────────
 *.tmp
+*.temp
+
+# ── Installers ───────────────────────────────────────────────────────────────
 gnatstudio-installer.exe
