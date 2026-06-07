@@ -1,10 +1,11 @@
 import React, { Suspense, useCallback, useRef, useState } from 'react';
-import { Zap, TestTube, Copy, Check, Download, AlertCircle, Loader, X } from 'lucide-react';
+import { Zap, TestTube, Copy, Check, Download, AlertCircle, Loader, X, RefreshCw } from 'lucide-react';
 import { useParseStore } from '../../store/useParseStore';
 import { useFileStore } from '../../store/useFileStore';
 import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useEditorStore } from '../../store/useEditorStore';
+import { useFileParser } from '../../hooks/useFileParser';
 import { showToast } from '../shared/Toast';
 import { Subprogram } from '../../types/subprogram.types';
 
@@ -31,19 +32,46 @@ export const ParsedJsonPanel: React.FC = () => {
   const { generateTests, setCurrentTests } = useTestCaseStore();
   const { setSubprograms, subprograms } = useSubprogramStore();
   const { setActiveTab } = useEditorStore();
+  const { parseFile } = useFileParser();
   const [generating, setGenerating] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [reparsing, setReparsing] = useState(false);
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
 
   const activeResult = activeResultFileId ? results[activeResultFileId] : null;
   const allResults = Object.values(results);
 
-  // Find the active file object (may exist even if not yet parsed)
   const activeFile = activeResultFileId
     ? files.find((f) => f.id === activeResultFileId)
     : null;
   const isParsing = activeFile && (activeFile.status === 'parsing' || activeFile.status === 'pending');
+
+  // Detect stale/cached JSON — check for duplicate subprogram names
+  const isStaleJson = (() => {
+    if (!activeResult) return false;
+    try {
+      const d = JSON.parse(activeResult.jsonText);
+      const fp = d.file_paths?.[0] ?? '';
+      const subs = d.subprogram_index?.[fp] ?? [];
+      const names = subs.map((s: {name: string}) => s.name);
+      return names.length !== new Set(names).size; // duplicates = stale
+    } catch { return false; }
+  })();
+
+  // Re-parse the active file with fresh analysis
+  const handleReParse = useCallback(async () => {
+    if (!activeFile || reparsing) return;
+    setReparsing(true);
+    clearResult(activeFile.id);
+    try {
+      await parseFile(activeFile);
+      showToast(`Re-parsed ${activeFile.name} with latest analyzer`, 'success');
+    } catch {
+      showToast(`Re-parse failed for ${activeFile.name}`, 'error');
+    }
+    setReparsing(false);
+  }, [activeFile, parseFile, clearResult, reparsing]);
 
   // Remove a file's JSON result and switch to another if available
   const handleRemoveResult = useCallback((fileId: string, e: React.MouseEvent) => {
@@ -369,6 +397,18 @@ export const ParsedJsonPanel: React.FC = () => {
             </div>
 
             <button
+              onClick={handleReParse}
+              disabled={reparsing}
+              className="p-1.5 rounded transition-colors"
+              style={{ color: reparsing ? '#facc15' : '#52525b' }}
+              title="Re-parse with latest analyzer (gets fresh types, no duplicates)"
+              onMouseEnter={(e) => { if (!reparsing) (e.currentTarget as HTMLButtonElement).style.color = '#facc15'; }}
+              onMouseLeave={(e) => { if (!reparsing) (e.currentTarget as HTMLButtonElement).style.color = '#52525b'; }}
+            >
+              {reparsing ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            </button>
+
+            <button
               onClick={handleCopy}
               className="p-1.5 rounded transition-colors"
               style={{ color: copied ? '#4ade80' : '#52525b' }}
@@ -388,6 +428,26 @@ export const ParsedJsonPanel: React.FC = () => {
               <Download size={13} />
             </button>
           </div>
+
+          {/* Stale JSON warning — shown when duplicates detected (old cached data) */}
+          {isStaleJson && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 flex-shrink-0 text-[10px] font-mono"
+              style={{ background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}
+            >
+              <AlertCircle size={12} className="flex-shrink-0" />
+              <span className="flex-1">This JSON is from a previous session — duplicate subprograms detected.</span>
+              <button
+                onClick={handleReParse}
+                disabled={reparsing}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-semibold transition-all flex-shrink-0"
+                style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b', cursor: reparsing ? 'not-allowed' : 'pointer' }}
+              >
+                {reparsing ? <Loader size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                {reparsing ? 'Re-parsing...' : 'Re-parse now'}
+              </button>
+            </div>
+          )}
 
           {/* JSON error banner */}
           {jsonError && (
