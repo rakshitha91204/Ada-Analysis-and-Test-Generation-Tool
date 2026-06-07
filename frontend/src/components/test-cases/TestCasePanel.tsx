@@ -163,6 +163,8 @@ function typeLabel(type: string): string {
   if (tl.includes('integer'))  return '-2147483648 .. 2147483647';
   if (tl.includes('float'))    return 'float';
   if (tl.includes('bool'))     return 'True | False';
+  if (tl.includes('character'))return "format: 'A'";
+  if (tl.includes('string'))   return 'format: "text"';
   return '';
 }
 function CaseBadge({ type }: { type: string }) {
@@ -556,6 +558,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                             type={p.constraint.kind==='integer'?'number':'text'}
                             value={inputs[p.name]??typeDefault(p.type)}
                             onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}
+                            placeholder={p.constraint.kind==='character' ? "'A'" : p.constraint.kind==='string' ? '"text"' : undefined}
                             min={p.constraint.min} max={p.constraint.max} />}
                     </div>
                   ))}
