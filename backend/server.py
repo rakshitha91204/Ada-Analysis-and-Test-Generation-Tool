@@ -834,9 +834,9 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
         "building_callgraph",
         "detecting_dead_code",
         "computing_complexity",
-        "extracting_control_flow",
         "analyzing_loops",
         "analyzing_variables",
+        "extracting_control_flow",
         "analyzing_globals",
         "analyzing_exceptions",
         "analyzing_concurrency",
@@ -929,17 +929,18 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
 
             yield sse(STAGES[i], "running", i)
             await asyncio.sleep(0)
-            control_flow = ControlFlowExtractor(units).run()
-            i += 1; yield sse(STAGES[i-1], "done", i)
-
-            yield sse(STAGES[i], "running", i)
-            await asyncio.sleep(0)
             loop_info = LoopAnalyzer(units).detect()
             i += 1; yield sse(STAGES[i-1], "done", i)
 
             yield sse(STAGES[i], "running", i)
             await asyncio.sleep(0)
             variables_info = VariablesAnalyzer(units).extract()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            # control_flow runs AFTER variables_info so types can be resolved
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            control_flow = ControlFlowExtractor(units).run(variables_info=variables_info)
             i += 1; yield sse(STAGES[i-1], "done", i)
 
             yield sse(STAGES[i], "running", i)

@@ -10,7 +10,7 @@ def _safe_text(node) -> str:
         return ""
 
 
-def _infer_from_rhs(rhs: str) -> str:
+def _infer_from_rhs(rhs: str, scope: dict = None) -> str:
     """Infer Ada type from RHS expression or literal."""
     t = rhs.strip()
     # Type attribute: Integer_8'Min(...) -> Integer_8
@@ -25,6 +25,20 @@ def _infer_from_rhs(rhs: str) -> str:
     if t.startswith('"') and t.endswith('"'): return "String"
     if len(t) == 3 and t[0] == "'" and t[2] == "'": return "Character"
     if t.startswith("16#"):                 return "Integer"
+    # Arithmetic with known variable: e.g. "Ret + 1" -> use type of Ret
+    if scope:
+        for op in ("+", "-", "*", "/"):
+            if op in t:
+                first_token = t.split(op)[0].strip().split("(")[0].split(".")[0].strip()
+                if first_token and first_token[0].isalpha():
+                    resolved = scope.get(first_token.lower(), {}).get("type", "Unknown")
+                    if resolved != "Unknown":
+                        return resolved
+    # Type conversion call: Natural(...), Integer_8(...)
+    if "(" in t:
+        func_name = t.split("(")[0].strip()
+        if func_name and func_name[0].isupper() and " " not in func_name and "." not in func_name:
+            return func_name
     return "Unknown"
 
 
@@ -80,13 +94,32 @@ def _build_scope(subp: lal.SubpBody, variables_info: dict, subp_name: str) -> di
         try:
             vd = for_loop.f_var_decl
             iter_name = vd.f_id.text
-            iter_type = vd.f_id_type.text.strip() if vd.f_id_type else "Integer"
+            # Try explicit type annotation first
+            iter_type = "Integer"
+            try:
+                if vd.f_id_type and vd.f_id_type.text.strip():
+                    iter_type = vd.f_id_type.text.strip()
+            except Exception:
+                pass
             _add(iter_name, iter_type)
         except Exception:
             pass
 
     # 4. Merge from variables_info (fills gaps: loop vars, nested vars)
     vi = variables_info or {}
+
+    # New flat-list schema: locals/globals/parameters are lists with 'subprogram' key
+    for v in vi.get("locals", []):
+        if v.get("subprogram") == subp_name and v.get("name", "").lower() not in scope:
+            _add(v.get("name", ""), v.get("type", "Unknown"))
+    for v in vi.get("globals", []):
+        if v.get("name", "").lower() not in scope:
+            _add(v.get("name", ""), v.get("type", "Unknown"))
+    for v in vi.get("parameters", []):
+        if v.get("subprogram") == subp_name and v.get("name", "").lower() not in scope:
+            _add(v.get("name", ""), v.get("type", "Unknown"))
+
+    # Legacy nested-dict schema: local_variables/global_variables/global_constants
     for scope_key in ("local_variables", "global_variables", "global_constants"):
         for vname, vinfo in vi.get(scope_key, {}).get(subp_name, {}).items():
             if vname.lower() not in scope:
@@ -209,7 +242,7 @@ class ControlFlowExtractor:
                         # Scope lookup first
                         resolved = _resolve(lhs_base, scope)
                         if resolved == "Unknown":
-                            resolved = _infer_from_rhs(rhs)
+                            resolved = _infer_from_rhs(rhs, scope)
                         branch_body_vars[lhs] = {
                             "kind": "assignment",
                             "data_type": {"type": resolved},
@@ -251,6 +284,13 @@ class ControlFlowExtractor:
                 name = _safe_text(ident)
                 if not name or name.lower() in keywords:
                     continue
+                # Skip record field suffixes: in "G.Vertices", Vertices is a field, not a var
+                try:
+                    p = ident.parent
+                    if p and hasattr(p, 'f_suffix') and p.f_suffix == ident:
+                        continue
+                except Exception:
+                    pass
                 base = name.split('.')[0].split('(')[0].strip()
                 base_lower = base.lower()
                 if base_lower in found:
@@ -261,7 +301,12 @@ class ControlFlowExtractor:
                         "kind": "resolved",
                         "data_type": {"type": t},
                     }
-                # Skip identifiers not in scope (type names, pkg qualifiers, etc.)
+                else:
+                    # Emit unresolved so it's visible in output
+                    found[base] = {
+                        "kind": "unresolved",
+                        "data_type": {"type": "Unknown"},
+                    }
         except Exception:
             pass
         return found
