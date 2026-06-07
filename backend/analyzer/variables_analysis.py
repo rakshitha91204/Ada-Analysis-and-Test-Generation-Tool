@@ -166,21 +166,48 @@ class VariablesAnalyzer:
                         "writes": sorted(writes),
                     }
 
-            result[filename] = {
-                "globals":      globals_list,
-                "locals":       locals_list,
-                "parameters":   parameters_list,
-                "global_usage": global_usage,
-                "summary": {
-                    "total_globals":   len(globals_list),
-                    "total_constants": sum(1 for g in globals_list if g["is_constant"]),
-                    "total_locals":    len(locals_list),
-                    "total_params":    len(parameters_list),
-                },
-                # Legacy compatibility keys
-                "global_variables": {subp: {} for subp in global_usage},
-                "global_constants": {},
-                "local_variables":  {subp: {v["name"]: {"type": v["type"]} for v in locals_list if v["subprogram"] == subp} for subp in set(v["subprogram"] for v in locals_list)},
-            }
+                # Legacy compatibility keys — properly populated for old consumers
+                # Build {subp_name: {var_name: {"type": type_str}}} from globals that are used by each subprogram
+                legacy_global_vars: dict = {}
+                legacy_global_consts: dict = {}
+                for subp_n, usage in global_usage.items():
+                    gv: dict = {}
+                    gc: dict = {}
+                    for gname in usage.get("reads", []) + usage.get("writes", []):
+                        meta = all_globals.get(gname.lower(), {})
+                        entry = {"type": meta.get("type", "Unknown")}
+                        if meta.get("is_constant"):
+                            gc[gname] = entry
+                        else:
+                            gv[gname] = entry
+                    legacy_global_vars[subp_n] = gv
+                    legacy_global_consts[subp_n] = gc
+
+                # Also include subprograms with locals even if no global usage
+                all_subp_names = set(v["subprogram"] for v in locals_list)
+                for subp_n in all_subp_names:
+                    if subp_n not in legacy_global_vars:
+                        legacy_global_vars[subp_n] = {}
+                        legacy_global_consts[subp_n] = {}
+
+                result[filename] = {
+                    "globals":      globals_list,
+                    "locals":       locals_list,
+                    "parameters":   parameters_list,
+                    "global_usage": global_usage,
+                    "summary": {
+                        "total_globals":   len(globals_list),
+                        "total_constants": sum(1 for g in globals_list if g["is_constant"]),
+                        "total_locals":    len(locals_list),
+                        "total_params":    len(parameters_list),
+                    },
+                    # Legacy compatibility keys — properly populated
+                    "global_variables": legacy_global_vars,
+                    "global_constants": legacy_global_consts,
+                    "local_variables":  {
+                        subp_n: {v["name"]: {"type": v["type"]} for v in locals_list if v["subprogram"] == subp_n}
+                        for subp_n in all_subp_names
+                    },
+                }
 
         return result
