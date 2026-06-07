@@ -357,11 +357,71 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     if (!studioSubp) return;
     setRunning(true);
 
+    // Build param_types map to send with the request so backend can validate
+    // even when the subprogram isn't in the backend session
+    const param_types: Record<string, string> = {};
+    studioSubp.params.forEach(p => {
+      param_types[p.name] = p.type;
+    });
+
+    // Client-side pre-validation for known types (immediate feedback)
+    const clientViolations: Array<{variable: string; type: string; value: string; error: string}> = [];
+    studioSubp.params
+      .filter(p => p.dir === 'in' || p.dir === 'in out')
+      .forEach(p => {
+        const val = inputs[p.name] ?? '';
+        const c = p.constraint;
+        if (c.kind === 'integer') {
+          const n = Number(val);
+          if (!val || isNaN(n) || !Number.isInteger(n)) {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Expected integer, got '${val}'` });
+          } else if (c.min !== undefined && n < c.min) {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Value ${n} out of range [${c.min} .. ${c.max}]` });
+          } else if (c.max !== undefined && n > c.max) {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Value ${n} out of range [${c.min} .. ${c.max}]` });
+          }
+        } else if (c.kind === 'float') {
+          if (val && isNaN(Number(val))) {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Expected float, got '${val}'` });
+          }
+        } else if (c.kind === 'boolean') {
+          if (val && val !== 'True' && val !== 'False') {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Expected True or False, got '${val}'` });
+          }
+        } else if (c.kind === 'character') {
+          if (val && !(val.startsWith("'") && val.endsWith("'") && val.length === 3)) {
+            clientViolations.push({ variable: p.name, type: p.type, value: val, error: `Expected character literal like 'A', got '${val}'` });
+          }
+        }
+      });
+
+    // If client-side violations found, show error immediately without hitting backend
+    if (clientViolations.length > 0) {
+      const details = clientViolations.map(v => `${v.variable}: ${v.error}`).join('; ');
+      const entry: TestRunResult = {
+        subprogram: studioSubp.name,
+        timestamp: new Date().toLocaleTimeString(),
+        status: 'error',
+        message: `Type constraint violation — ${details}`,
+        explanation: `The test could not run because ${clientViolations.length} input(s) failed Ada type validation: ${details}. Fix the input values to match the declared Ada types.`,
+        actual: {},
+        elapsed_ms: 0,
+        violations: clientViolations,
+        inputs,
+        expected,
+      };
+      setLastResult(entry);
+      setHistory(h => [entry, ...h]);
+      setRunning(false);
+      return;
+    }
+
     try {
       const res = await studioPost<TestRunResult & { error?: string }>('/test/run', {
         subprogram: studioSubp.name,
         inputs,
         expected,
+        param_types,  // Send type info so backend can validate even without session
       });
 
       // Handle backend error response

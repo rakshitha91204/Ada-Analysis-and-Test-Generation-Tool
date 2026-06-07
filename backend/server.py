@@ -238,10 +238,10 @@ def _simulate_execution_basic(subp_name: str, inputs: dict, expected: dict) -> d
     }
 
 
-def _simulate_execution(subp_name: str, inputs: dict, expected: dict) -> dict:
+def _simulate_execution(subp_name: str, inputs: dict, expected: dict, subp_data_override: dict | None = None) -> dict:
     """Simulate test execution with type validation and detailed explanation."""
     violations = []
-    subp_data  = _get_subprogram_from_session(subp_name)
+    subp_data  = subp_data_override or _get_subprogram_from_session(subp_name)
     if subp_data:
         for var, val in inputs.items():
             for p in subp_data.get("params", []):
@@ -729,11 +729,28 @@ async def api_run_test(request: Request):
                 subp_data = s
                 break
 
-    if not subp_data and not param_types:
-        # No session data and no param types provided — run without validation
+    # If caller sent param_types, build a synthetic subp_data for validation
+    if not subp_data and param_types:
+        subp_data = {
+            "name": subp_name,
+            "params": [
+                {
+                    "name": pname,
+                    "type": ptype,
+                    "type_normalized": ptype.lower(),
+                    "dir": "in",
+                    "constraint": _type_constraint(ptype),
+                }
+                for pname, ptype in param_types.items()
+            ],
+            "variables": [],
+        }
+
+    if not subp_data:
+        # No session data and no param types — run basic simulation
         result = _simulate_execution_basic(subp_name, inputs, expected)
     else:
-        result = _simulate_execution(subp_name, inputs, expected)
+        result = _simulate_execution(subp_name, inputs, expected, subp_data_override=subp_data)
 
     test_id = str(uuid.uuid4())[:8]
     _test_results[test_id] = {
