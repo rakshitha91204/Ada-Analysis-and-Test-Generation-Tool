@@ -37,6 +37,7 @@ export interface SubprogramEntry {
   name: string;
   parameters: string[];
   return_type: string | null;
+  is_function?: boolean;
   start_line: number;
   end_line: number;
 }

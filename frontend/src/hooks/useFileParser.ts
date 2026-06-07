@@ -43,14 +43,24 @@ async function isBackendAvailable(): Promise<boolean> {
  */
 function backendSubprogramsToStore(
   analysis: AdaAnalysisResult,
-  fileId: string
+  fileId: string,
+  uploadedFileName?: string
 ): Subprogram[] {
   const filePath = analysis.file_paths?.[0] ?? '';
-  // Try exact path match first, then any key
-  const entries =
-    analysis.subprogram_index?.[filePath] ??
-    Object.values(analysis.subprogram_index ?? {})[0] ??
-    [];
+
+  // Try exact match first, then basename match, then first key
+  let entries = analysis.subprogram_index?.[filePath];
+  if (!entries && uploadedFileName) {
+    // Backend now normalizes to basename — match by filename
+    const baseName = uploadedFileName.split(/[/\\]/).pop() ?? uploadedFileName;
+    entries = analysis.subprogram_index?.[baseName]
+      ?? Object.entries(analysis.subprogram_index ?? {}).find(
+           ([k]) => k.split(/[/\\]/).pop() === baseName
+         )?.[1];
+  }
+  if (!entries) {
+    entries = Object.values(analysis.subprogram_index ?? {})[0] ?? [];
+  }
 
   return entries.map((s) => {
     const params: Subprogram['parameters'] = [];
@@ -74,7 +84,8 @@ function backendSubprogramsToStore(
       id: `${fileId}_${s.name}_${s.start_line}`,
       fileId,
       name: s.name,
-      kind: (s.return_type ? 'function' : 'procedure') as 'function' | 'procedure',
+      // Use is_function flag if present, otherwise fall back to return_type presence
+      kind: (s.is_function || !!s.return_type ? 'function' : 'procedure') as 'function' | 'procedure',
       parameters: params,
       returnType: s.return_type ?? undefined,
       startLine: s.start_line,
@@ -120,7 +131,7 @@ export function useFileParser() {
           const analysisResult = await analyzeFiles(filesToSend);
 
           // Use richer subprogram data from backend subprogram_index
-          const subs = backendSubprogramsToStore(analysisResult, file.id);
+          const subs = backendSubprogramsToStore(analysisResult, file.id, file.name);
           // Fall back to client-side parser if backend returned no subprograms
           const finalSubs = subs.length > 0 ? subs : parseSubprograms(file.content, file.id);
 

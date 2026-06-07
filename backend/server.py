@@ -1219,7 +1219,7 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
             mock_stub_data = MockStubGenerator(callgraph, subprogram_index).generate()
             i += 1; yield sse(STAGES[i-1], "done", i)
 
-            result = {
+            result = _normalize_paths({
                 "file_paths":             file_paths,
                 "ast_info":               ast_info,
                 "subprogram_index":       subprogram_index,
@@ -1238,7 +1238,7 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
                 "performance_warnings":   performance_warnings,
                 "test_harness_data":      test_harness_data,
                 "mock_stub_data":         mock_stub_data,
-            }
+            })
 
             _analysis_result = result
             _project_path = tmp_dir
@@ -1255,6 +1255,51 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
             }) + "\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Path normalization ────────────────────────────────────────────────────────
+def _normalize_paths(result: dict) -> dict:
+    """
+    Replace full temporary file paths (e.g. /tmp/ada_xxx/lcd_std_out.adb)
+    with just the basename (lcd_std_out.adb) in all dict keys, and update
+    file_paths list to use basenames too.
+
+    This makes the JSON clean and predictable for the frontend.
+    If two uploaded files share the same basename, the full path is kept
+    to avoid key collisions.
+    """
+    raw_paths: list[str] = result.get("file_paths", [])
+
+    # Check for basename collisions — if any collision, keep full paths
+    basenames = [Path(p).name for p in raw_paths]
+    if len(set(basenames)) < len(basenames):
+        return result  # collision: keep full paths as-is
+
+    path_map: dict[str, str] = {p: Path(p).name for p in raw_paths}
+
+    def _remap(obj):
+        """Recursively remap dict keys that are full paths."""
+        if isinstance(obj, dict):
+            return {path_map.get(k, k): _remap(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_remap(i) for i in obj]
+        if isinstance(obj, str) and obj in path_map:
+            return path_map[obj]
+        return obj
+
+    # Remap file_paths list
+    result["file_paths"] = [path_map.get(p, p) for p in raw_paths]
+
+    # Remap all dict keys that are file paths
+    for key in (
+        "ast_info", "subprogram_index", "variables_info",
+        "control_flow_extractor", "global_read_write",
+        "loop_info", "exceptions_info",
+    ):
+        if key in result and isinstance(result[key], dict):
+            result[key] = {path_map.get(k, k): v for k, v in result[key].items()}
+
+    return result
 
 
 # ── Full analysis pipeline ────────────────────────────────────────────────────
@@ -1291,7 +1336,7 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
     test_harness_data     = TestHarnessGenerator(subprogram_index).generate()
     mock_stub_data        = MockStubGenerator(callgraph, subprogram_index).generate()
 
-    return {
+    result = {
         "file_paths":             file_paths,
         "ast_info":               ast_info,
         "subprogram_index":       subprogram_index,
@@ -1311,6 +1356,7 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
         "test_harness_data":      test_harness_data,
         "mock_stub_data":         mock_stub_data,
     }
+    return _normalize_paths(result)
 
 
 # ── Dev entry point ───────────────────────────────────────────────────────────

@@ -239,10 +239,20 @@ class ControlFlowExtractor:
                             "begin","end","is","then","else","loop","return","raise","null","when","others"
                         ):
                             continue
-                        # Scope lookup first
+                        # 1. Scope lookup (fastest, most accurate)
                         resolved = _resolve(lhs_base, scope)
                         if resolved == "Unknown":
+                            # 2. Try RHS inference with scope context
                             resolved = _infer_from_rhs(rhs, scope)
+                        if resolved == "Unknown":
+                            # 3. Last resort: scan locals list directly by name
+                            lhs_lower = lhs_base.lower()
+                            for v in file_vi.get("locals", []):
+                                if v.get("name", "").lower() == lhs_lower:
+                                    resolved = v.get("type", "Unknown")
+                                    if resolved != "Unknown":
+                                        _add(lhs_base, resolved)  # cache in scope
+                                        break
                         branch_body_vars[lhs] = {
                             "kind": "assignment",
                             "data_type": {"type": resolved},

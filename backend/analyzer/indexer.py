@@ -37,10 +37,30 @@ class SubprogramIndexer:
         """Return the return type text or None."""
         try:
             if spec.f_subp_returns:
-                return spec.f_subp_returns.text
+                t = spec.f_subp_returns.text
+                if t and t.strip():
+                    return t.strip()
         except Exception:
             pass
         return None
+
+    @staticmethod
+    def _is_function(spec) -> bool:
+        """True if this spec is a function (has return type or kind=SubpKindFunction)."""
+        # Primary: check for return type
+        try:
+            if spec.f_subp_returns and spec.f_subp_returns.text.strip():
+                return True
+        except Exception:
+            pass
+        # Secondary: check subp_kind node
+        try:
+            kind = spec.f_subp_kind
+            if kind and "function" in kind.text.lower():
+                return True
+        except Exception:
+            pass
+        return False
 
     def index(self) -> dict:
         """
@@ -66,6 +86,7 @@ class SubprogramIndexer:
                         "name":           name,
                         "parameters":     self._extract_params(spec),
                         "return_type":    self._return_type(spec),
+                        "is_function":    self._is_function(spec),
                         "start_line":     node.sloc_range.start.line,
                         "end_line":       node.sloc_range.end.line,
                         "is_declaration": False,
@@ -90,6 +111,7 @@ class SubprogramIndexer:
                         "name":           name,
                         "parameters":     self._extract_params(spec),
                         "return_type":    self._return_type(spec),
+                        "is_function":    self._is_function(spec),
                         "start_line":     node.sloc_range.start.line,
                         "end_line":       node.sloc_range.end.line,
                         "is_declaration": True,
