@@ -18,11 +18,24 @@ class VariablesAnalyzer:
 
     @staticmethod
     def _get_type(obj):
+        """Get the declared type string — try multiple strategies."""
+        # Strategy 1: f_type_expr.text (most reliable)
         try:
             if obj.f_type_expr:
-                return obj.f_type_expr.text.strip()
+                t = obj.f_type_expr.text.strip()
+                if t:
+                    return t
         except Exception:
             pass
+
+        # Strategy 2: p_type semantic resolution
+        try:
+            resolved = obj.p_type
+            if resolved and hasattr(resolved, 'text') and resolved.text:
+                return resolved.text.strip()
+        except Exception:
+            pass
+
         return "Unknown"
 
     @staticmethod
@@ -49,8 +62,8 @@ class VariablesAnalyzer:
         except Exception:
             return "in"
 
-    def extract(self):
-        # Pass 1: all package-level globals across every unit
+    def extract(self) -> dict:
+        # Pass 1: collect ALL package-level globals across every unit
         all_globals: dict = {}
         for unit in self.units:
             for obj in unit.root.findall(lal.ObjectDecl):
@@ -109,7 +122,8 @@ class VariablesAnalyzer:
                     for param in subp.f_subp_spec.f_subp_params.f_params:
                         ptype = "Unknown"
                         try:
-                            ptype = param.f_type_expr.text.strip()
+                            if param.f_type_expr:
+                                ptype = param.f_type_expr.text.strip() or "Unknown"
                         except Exception:
                             pass
                         mode = self._get_mode(param)
@@ -125,8 +139,17 @@ class VariablesAnalyzer:
                 except Exception:
                     pass
 
-                # Local variables
+                # Local variables (skip nested subprogram bodies)
                 for obj in subp.findall(lal.ObjectDecl):
+                    parent = obj.parent
+                    in_nested = False
+                    while parent and parent != subp:
+                        if isinstance(parent, lal.SubpBody):
+                            in_nested = True
+                            break
+                        parent = parent.parent
+                    if in_nested:
+                        continue
                     type_str = self._get_type(obj)
                     is_const = self._is_constant(obj)
                     default  = self._get_default(obj)
@@ -146,7 +169,7 @@ class VariablesAnalyzer:
                 writes: set = set()
                 for assign in subp.findall(lal.AssignStmt):
                     try:
-                        lhs = assign.f_dest.text.strip()
+                        lhs = assign.f_dest.text.strip().split('.')[0].split('(')[0].strip()
                         if lhs.lower() in all_globals:
                             writes.add(all_globals[lhs.lower()]["name"])
                     except Exception:
@@ -166,48 +189,49 @@ class VariablesAnalyzer:
                         "writes": sorted(writes),
                     }
 
-                # Legacy compatibility keys — properly populated for old consumers
-                # Build {subp_name: {var_name: {"type": type_str}}} from globals that are used by each subprogram
-                legacy_global_vars: dict = {}
-                legacy_global_consts: dict = {}
-                for subp_n, usage in global_usage.items():
-                    gv: dict = {}
-                    gc: dict = {}
-                    for gname in usage.get("reads", []) + usage.get("writes", []):
-                        meta = all_globals.get(gname.lower(), {})
-                        entry = {"type": meta.get("type", "Unknown")}
-                        if meta.get("is_constant"):
-                            gc[gname] = entry
-                        else:
-                            gv[gname] = entry
-                    legacy_global_vars[subp_n] = gv
-                    legacy_global_consts[subp_n] = gc
+            # ── Build legacy compat keys AFTER processing all subprograms ──
+            all_subp_names = set(v["subprogram"] for v in locals_list)
+            # Add subprogram names from params and global_usage too
+            for v in parameters_list:
+                all_subp_names.add(v["subprogram"])
+            for subp_n in global_usage:
+                all_subp_names.add(subp_n)
 
-                # Also include subprograms with locals even if no global usage
-                all_subp_names = set(v["subprogram"] for v in locals_list)
-                for subp_n in all_subp_names:
-                    if subp_n not in legacy_global_vars:
-                        legacy_global_vars[subp_n] = {}
-                        legacy_global_consts[subp_n] = {}
+            legacy_global_vars: dict = {s: {} for s in all_subp_names}
+            legacy_global_consts: dict = {s: {} for s in all_subp_names}
 
-                result[filename] = {
-                    "globals":      globals_list,
-                    "locals":       locals_list,
-                    "parameters":   parameters_list,
-                    "global_usage": global_usage,
-                    "summary": {
-                        "total_globals":   len(globals_list),
-                        "total_constants": sum(1 for g in globals_list if g["is_constant"]),
-                        "total_locals":    len(locals_list),
-                        "total_params":    len(parameters_list),
-                    },
-                    # Legacy compatibility keys — properly populated
-                    "global_variables": legacy_global_vars,
-                    "global_constants": legacy_global_consts,
-                    "local_variables":  {
-                        subp_n: {v["name"]: {"type": v["type"]} for v in locals_list if v["subprogram"] == subp_n}
-                        for subp_n in all_subp_names
-                    },
+            for subp_n, usage in global_usage.items():
+                for gname in usage.get("reads", []) + usage.get("writes", []):
+                    meta = all_globals.get(gname.lower(), {})
+                    entry = {"type": meta.get("type", "Unknown")}
+                    if meta.get("is_constant"):
+                        legacy_global_consts.setdefault(subp_n, {})[gname] = entry
+                    else:
+                        legacy_global_vars.setdefault(subp_n, {})[gname] = entry
+
+            legacy_local_vars = {
+                subp_n: {
+                    v["name"]: {"type": v["type"]}
+                    for v in locals_list if v["subprogram"] == subp_n
                 }
+                for subp_n in all_subp_names
+            }
+
+            result[filename] = {
+                "globals":      globals_list,
+                "locals":       locals_list,
+                "parameters":   parameters_list,
+                "global_usage": global_usage,
+                "summary": {
+                    "total_globals":   len(globals_list),
+                    "total_constants": sum(1 for g in globals_list if g["is_constant"]),
+                    "total_locals":    len(locals_list),
+                    "total_params":    len(parameters_list),
+                },
+                # Legacy compatibility keys
+                "global_variables": legacy_global_vars,
+                "global_constants": legacy_global_consts,
+                "local_variables":  legacy_local_vars,
+            }
 
         return result
