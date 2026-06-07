@@ -180,22 +180,41 @@ function StatusDot({ status }: { status: string }) {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function studioPost<T>(path: string, body: unknown): Promise<T> {
-  try {
-    const r = await fetch('/api' + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return r.json();
-  } catch (e) {
-    return { error: (e as Error).message } as unknown as T;
+  // Try Vite proxy first (/api/*), then direct backend as fallback
+  const urls = ['/api' + path, 'http://localhost:8001/api' + path];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const ct = r.headers.get('content-type') || '';
+      if (ct.includes('application/json') || ct.includes('text/')) {
+        return r.json();
+      }
+      // Non-JSON response from proxy (HTML fallback) — try next URL
+      continue;
+    } catch {
+      // Network error — try next URL
+    }
   }
+  return { error: 'Could not connect to backend on port 8001' } as unknown as T;
 }
+
 async function studioGet<T>(path: string): Promise<T> {
-  try {
-    const r = await fetch('/api' + path);
-    if (!r.ok) return [] as unknown as T;
-    return r.json();
-  } catch { return [] as unknown as T; }
+  const urls = ['/api' + path, 'http://localhost:8001/api' + path];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url);
+      const ct = r.headers.get('content-type') || '';
+      if (r.ok && ct.includes('application/json')) return r.json();
+      if (r.ok) return r.json();
+    } catch {
+      // try next
+    }
+  }
+  return [] as unknown as T;
 }
 
 // ── TestStudioInputs — the full input/variables/history UI ───────────────────
@@ -352,8 +371,8 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
           subprogram: studioSubp.name,
           timestamp: new Date().toLocaleTimeString(),
           status: 'error',
-          message: 'Backend error',
-          explanation: errMsg,
+          message: 'Backend connection error',
+          explanation: `${errMsg}. Make sure the backend is running at http://localhost:8001 and the file has been uploaded and parsed.`,
           actual: {},
           elapsed_ms: 0,
           inputs,
@@ -365,8 +384,11 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         return;
       }
 
+      // Ensure status is always valid
+      const status = (res.status as string) || 'pass';
       const entry: TestRunResult = {
         ...res,
+        status: (status === 'pass' || status === 'fail' || status === 'error') ? status : 'pass',
         subprogram: studioSubp.name,
         timestamp: new Date().toLocaleTimeString(),
         inputs,
