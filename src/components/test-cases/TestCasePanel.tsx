@@ -1,16 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { RefreshCw, Download, Play, ChevronDown, BarChart2, Code2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
-import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { useParseStore } from '../../store/useParseStore';
 import { useFileStore } from '../../store/useFileStore';
-import { TestCaseCard } from './TestCaseCard';
 import { TestCaseHistory } from './TestCaseHistory';
-import { CoverageHeatmap } from './CoverageHeatmap';
-import { TestStatsPanel } from '../shared/TestStatsPanel';
 import { EmptyState } from '../shared/EmptyState';
-import { Button } from '../shared/Button';
-import { Badge } from '../shared/Badge';
 import { TestTube } from 'lucide-react';
 import '../../styles/TestStudio.css';
 import type { AdaAnalysisResult } from '../../utils/adaAnalyzer';
@@ -776,13 +769,6 @@ const SkeletonCard: React.FC = () => (
 export const TestCasePanel: React.FC = () => {
   const { subprograms: storeSubprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
   const { setSubprograms } = useSubprogramStore();
-  const { currentTestSets, exportCurrent, exportAllHistory, exportCurrentAsADB, saveToHistory, setCurrentTests, generateTests } = useTestCaseStore();
-  const [generating, setGenerating] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [showStats,  setShowStats]  = useState(false);
-  const dragFrom = useRef<number|null>(null);
-  const dragTo   = useRef<number|null>(null);
-  const [draggingIdx, setDraggingIdx] = useState<number|null>(null);
 
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
@@ -810,7 +796,6 @@ export const TestCasePanel: React.FC = () => {
   }, [storeSubprograms.length, parseStoreSubprograms, setSubprograms]);
 
   const selectedSub = subprograms.find(s => s.id === selectedSubprogramId);
-  const tests = selectedSubprogramId ? (currentTestSets[selectedSubprogramId]||[]) : [];
 
   // Resolve subprogram name FIRST — from store, then search all parse results by ID substring
   const resolvedSubpName = (() => {
@@ -844,46 +829,6 @@ export const TestCasePanel: React.FC = () => {
     const vals = Object.values(results);
     return vals.length > 0 ? vals[vals.length - 1] : null;
   })();
-  const harnessTemplate = (() => {
-    if (!resolvedSubpName || !activeResult?.analysis?.test_harness_data) return null;
-    const allEntries = Object.values(activeResult.analysis.test_harness_data).flat();
-    return allEntries.find(e => e.original_subprogram === resolvedSubpName) ?? null;
-  })();
-  const [showHarness, setShowHarness] = useState(false);
-
-  const generateForSelected = useCallback(() => {
-    if (!selectedSub) return;
-    setGenerating(true);
-    setTimeout(() => { generateTests(selectedSub); setGenerating(false); }, 300);
-  }, [selectedSub, generateTests]);
-
-  const generateForAll = useCallback(() => {
-    setGenerating(true);
-    let delay = 0;
-    subprograms.forEach(s => { setTimeout(() => generateTests(s), delay); delay += 80; });
-    setTimeout(() => setGenerating(false), delay + 200);
-  }, [subprograms, generateTests]);
-
-  useEffect(() => {
-    if (selectedSubprogramId && !currentTestSets[selectedSubprogramId]?.length) generateForSelected();
-  }, [selectedSubprogramId]); // eslint-disable-line
-
-  const handleSaveToHistory = () => {
-    const name = selectedSub?.name || resolvedSubpName;
-    if (!name || !selectedSubprogramId) return;
-    saveToHistory({ id: crypto.randomUUID(), subprogramId: selectedSubprogramId, subprogramName: name, timestamp: new Date().toISOString(), testCases: tests });
-  };
-
-  const handleDragStart = (idx: number) => { dragFrom.current = idx; setDraggingIdx(idx); };
-  const handleDragOver  = (idx: number) => { dragTo.current = idx; };
-  const handleDrop = () => {
-    if (dragFrom.current===null||dragTo.current===null||!selectedSubprogramId) return;
-    const reordered = [...tests];
-    const [moved] = reordered.splice(dragFrom.current, 1);
-    reordered.splice(dragTo.current, 0, moved);
-    setCurrentTests(selectedSubprogramId, reordered);
-    dragFrom.current = null; dragTo.current = null; setDraggingIdx(null);
-  };
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--bg-base)' }}>
@@ -899,91 +844,16 @@ export const TestCasePanel: React.FC = () => {
               <option key={s.id} value={s.id}>{s.kind==='function'?'ƒ':'⚡'} {s.name}</option>
             ))}
           </select>
-          <Button variant={showStats?'primary':'ghost'} size="sm" icon={<BarChart2 size={11} />} onClick={() => setShowStats(v => !v)}>Stats</Button>
         </div>
-
-        {/* Stats + coverage */}
-        {showStats && (
-          <div className="p-3 border-b flex flex-col gap-3 flex-shrink-0" style={{ borderColor: 'var(--border-default)' }}>
-            <TestStatsPanel /><CoverageHeatmap />
-          </div>
-        )}
 
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
           {!selectedSubprogramId ? (
-            <EmptyState icon={<TestTube size={28} />} heading="Select a subprogram" subtext="Test cases will be auto-generated on selection." />
+            <EmptyState icon={<TestTube size={28} />} heading="Select a subprogram" subtext="Select a subprogram to run tests." />
           ) : (
             <>
               {/* ── TEST STUDIO INPUTS — shown at top when subprogram selected ── */}
               <TestStudioInputs subpName={resolvedSubpName} analysis={activeResult?.analysis ?? null} />
-
-              {/* Action bar */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button variant="ghost" size="sm" icon={<RefreshCw size={11} />} loading={generating} onClick={generateForSelected}>Regenerate</Button>
-                <Button variant="ghost" size="sm" icon={<Play size={11} />} onClick={generateForAll}>All</Button>
-                <Button variant="ghost" size="sm" onClick={handleSaveToHistory}>Save</Button>
-                <div className="relative ml-auto">
-                  <Button variant="secondary" size="sm" icon={<Download size={11} />} onClick={() => setExportOpen(v => !v)}>
-                    Export <ChevronDown size={10} />
-                  </Button>
-                  {exportOpen && (
-                    <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-xl overflow-hidden"
-                      style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)', minWidth: 210 }}>
-                      {[
-                        { label: 'Download current as JSON', action: () => exportCurrent(selectedSubprogramId!, resolvedSubpName||selectedSub?.name||'') },
-                        { label: 'Download all history as JSON', action: exportAllHistory },
-                        { label: 'Download as .adb stub', action: () => exportCurrentAsADB(selectedSubprogramId!, resolvedSubpName||selectedSub?.name||'') },
-                        { label: 'Export as CSV', action: () => exportAsCSV(tests, resolvedSubpName||selectedSub?.name||'tests') },
-                      ].map(item => (
-                        <button key={item.label} onClick={() => { item.action(); setExportOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-mono text-zinc-300 hover:bg-zinc-700/50 transition-colors">
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Test case count */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Generated Test Cases</span>
-                <Badge variant="primary" animate={tests.length>0}>{tests.length} 🧪</Badge>
-                {tests.some(t => t.runStatus==='pass') && (
-                  <span className="text-[10px] font-mono text-green-400 ml-auto">
-                    {tests.filter(t => t.runStatus==='pass').length}/{tests.length} pass
-                  </span>
-                )}
-              </div>
-
-              {/* Backend harness template */}
-              {harnessTemplate && (
-                <div className="rounded-lg border overflow-hidden flex-shrink-0"
-                  style={{ borderColor: 'rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.04)' }}>
-                  <button onClick={() => setShowHarness(v => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
-                    <Code2 size={11} style={{ color: '#4ade80' }} />
-                    <span className="text-[10px] font-mono font-semibold" style={{ color: '#4ade80' }}>Backend Harness Template</span>
-                    <span className="ml-auto text-[9px] font-mono" style={{ color: '#52525b' }}>{showHarness?'▲ hide':'▼ show'}</span>
-                  </button>
-                  {showHarness && (
-                    <pre className="px-3 pb-3 text-[10px] font-mono overflow-x-auto"
-                      style={{ color: '#a1a1aa', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {harnessTemplate.template}
-                    </pre>
-                  )}
-                </div>
-              )}
-
-              {/* Test cards */}
-              {generating
-                ? Array.from({length:3}).map((_,i) => <SkeletonCard key={i} />)
-                : tests.length === 0
-                  ? <EmptyState icon={<TestTube size={28} />} heading="No test cases" action={{ label: 'Generate Now', onClick: generateForSelected }} />
-                  : tests.map((tc,i) => (
-                      <TestCaseCard key={tc.id} testCase={tc} index={i} subprogramId={selectedSubprogramId!}
-                        onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop} isDragging={draggingIdx===i} />
-                    ))}
             </>
           )}
         </div>
@@ -996,16 +866,3 @@ export const TestCasePanel: React.FC = () => {
     </div>
   );
 };
-
-// CSV export helper
-function exportAsCSV(tests: import('../../types/testcase.types').TestCase[], name: string) {
-  if (tests.length===0) return;
-  const inputKeys = Object.keys(tests[0].inputs);
-  const header = [...inputKeys,'expected','type','coverageHint','runStatus'].join(',');
-  const rows = tests.map(t => [...inputKeys.map(k => JSON.stringify(t.inputs[k]??'')), JSON.stringify(t.expected), t.type, JSON.stringify(t.coverageHint??''), t.runStatus??'pending'].join(','));
-  const csv = [header,...rows].join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`${name}_tests.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
