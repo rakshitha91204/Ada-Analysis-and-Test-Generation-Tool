@@ -1,6 +1,20 @@
 # harness_generator.py
 # Generates Ada test harness procedure templates from the subprogram index.
 
+
+def _ada_default(type_str: str) -> str:
+    """Return a valid Ada default literal for common type names."""
+    t = type_str.strip().lower()
+    if t in ("boolean",):
+        return "False"
+    if t in ("character",):
+        return "' '"
+    if t in ("string",):
+        return '""'
+    if any(x in t for x in ("float", "long_float", "duration")):
+        return "0.0"
+    return "0"
+
 class TestHarnessGenerator:
     """
     Generates test harness Ada procedure stubs for every subprogram
@@ -53,7 +67,8 @@ class TestHarnessGenerator:
                         for n in names_part.split(","):
                             n = n.strip()
                             if n:
-                                param_decls.append(f"   {n} : {type_clean} := <>;")
+                                default_val = _ada_default(type_clean)
+                                param_decls.append(f"   {n} : {type_clean} := {default_val};")
                                 param_names.append(n)
                     else:
                         # Fallback: use raw string

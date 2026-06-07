@@ -24,6 +24,7 @@ import sys
 import json
 import uuid
 import time
+import asyncio
 import tempfile
 import traceback
 from pathlib import Path
@@ -41,7 +42,7 @@ if str(HERE) not in sys.path:
 try:
     from fastapi import FastAPI, File, UploadFile, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, StreamingResponse
 except ImportError as e:
     print(f"[ERROR] FastAPI not installed. Run: pip install fastapi uvicorn python-multipart\n{e}")
     sys.exit(1)
@@ -776,6 +777,237 @@ def api_export():
     }))
 
 
+# ── SSE streaming analysis endpoint ──────────────────────────────────────────
+@app.post("/analyze/stream")
+async def analyze_stream(files: list[UploadFile] = File(...)):
+    """
+    Accept Ada source files and stream analysis progress via Server-Sent Events.
+    Each SSE event reports a stage name, status, and progress 0-100.
+    """
+    if not LIBADALANG_AVAILABLE:
+        async def error_stream():
+            yield "data: " + json.dumps({
+                "stage": "error", "status": "error", "progress": 0,
+                "message": "libadalang is not installed."
+            }) + "\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in ADA_EXTENSIONS:
+            async def bad_file_stream():
+                yield "data: " + json.dumps({
+                    "stage": "error", "status": "error", "progress": 0,
+                    "message": f"'{f.filename}' is not an Ada source file."
+                }) + "\n\n"
+            return StreamingResponse(bad_file_stream(), media_type="text/event-stream")
+
+    # Read all files upfront before the generator runs
+    file_contents = []
+    for upload in files:
+        content = await upload.read()
+        file_contents.append((upload.filename or "unnamed.adb", content))
+
+    global _analysis_result, _project_path
+
+    STAGES = [
+        "loading_files",
+        "parsing_ast",
+        "indexing_subprograms",
+        "building_callgraph",
+        "detecting_dead_code",
+        "computing_complexity",
+        "extracting_control_flow",
+        "analyzing_loops",
+        "analyzing_variables",
+        "analyzing_globals",
+        "analyzing_exceptions",
+        "analyzing_concurrency",
+        "analyzing_protected",
+        "detecting_logical_errors",
+        "detecting_bugs",
+        "analyzing_performance",
+        "generating_harness",
+        "generating_mocks",
+    ]
+
+    async def event_stream():
+        nonlocal file_contents
+        tmp_dir = tempfile.mkdtemp(prefix="ada_stream_")
+        file_paths: list[str] = []
+        try:
+            for fname, content in file_contents:
+                dest = os.path.join(tmp_dir, fname)
+                with open(dest, "wb") as fh:
+                    fh.write(content)
+                file_paths.append(dest)
+
+            total = len(STAGES)
+
+            def sse(stage: str, status: str, idx: int, extra: dict = None):
+                progress = int(round((idx / total) * 100))
+                payload = {"stage": stage, "status": status, "progress": progress}
+                if extra:
+                    payload.update(extra)
+                return "data: " + json.dumps(payload) + "\n\n"
+
+            # Run each stage
+            from analyzer.project_loader import ProjectLoader
+            from analyzer.indexer import SubprogramIndexer
+            from analyzer.parser import Parser
+            from analyzer.callgraph import CallGraphBuilder
+            from analyzer.deadcode import DeadCodeDetector
+            from analyzer.complexity import ComplexityAnalyzer
+            from analyzer.control_flow_extractor import ControlFlowExtractor
+            from analyzer.loop_analysis import LoopAnalyzer
+            from analyzer.variables_analysis import VariablesAnalyzer
+            from analyzer.globals_analysis import GlobalRWDetector
+            from analyzer.exception_analysis import ExceptionAnalyzer
+            from analyzer.concurrency import ConcurrencyAnalyzer
+            from analyzer.protected_analysis import ProtectedAccessDetector
+            from analyzer.logical_error import LogicalErrorDetector
+            from analyzer.bug_detector import BugDetector
+            from analyzer.performance import PerformanceAnalyzer
+            from generators.harness_generator import TestHarnessGenerator
+            from generators.mock_generator import MockStubGenerator
+
+            i = 0
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            loader = ProjectLoader(file_paths)
+            units  = loader.load_units()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            ast_info = Parser(units).extract_ast()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            subprogram_index = SubprogramIndexer(units).index()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            callgraph = CallGraphBuilder(units).build()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            public_subps = set()
+            for fp in file_paths:
+                if fp.endswith(".ads"):
+                    for subps in subprogram_index.values():
+                        for s in subps:
+                            public_subps.add(s["name"])
+            dead_code = DeadCodeDetector(callgraph, public_subps).detect_unused_subprograms()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            cyclomatic_complexity = ComplexityAnalyzer(units).compute()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            control_flow = ControlFlowExtractor(units).run()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            loop_info = LoopAnalyzer(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            variables_info = VariablesAnalyzer(units).extract()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            global_read_write = GlobalRWDetector(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            exceptions_info = ExceptionAnalyzer(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            concurrency_info = ConcurrencyAnalyzer(units).analyze()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            protected_objects = ProtectedAccessDetector(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            logical_errors = LogicalErrorDetector(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            bug_report = BugDetector(units).detect()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            performance_warnings = PerformanceAnalyzer(units).analyze()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            test_harness_data = TestHarnessGenerator(subprogram_index).generate()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            yield sse(STAGES[i], "running", i)
+            await asyncio.sleep(0)
+            mock_stub_data = MockStubGenerator(callgraph, subprogram_index).generate()
+            i += 1; yield sse(STAGES[i-1], "done", i)
+
+            result = {
+                "file_paths":             file_paths,
+                "ast_info":               ast_info,
+                "subprogram_index":       subprogram_index,
+                "call_graph":             callgraph,
+                "dead_code":              dead_code,
+                "cyclomatic_complexity":  cyclomatic_complexity,
+                "control_flow_extractor": control_flow,
+                "loop_info":              loop_info,
+                "variables_info":         variables_info,
+                "global_read_write":      global_read_write,
+                "exceptions_info":        exceptions_info,
+                "concurrency_info":       concurrency_info,
+                "protected_objects":      protected_objects,
+                "logical_errors":         logical_errors,
+                "bug_report":             bug_report,
+                "performance_warnings":   performance_warnings,
+                "test_harness_data":      test_harness_data,
+                "mock_stub_data":         mock_stub_data,
+            }
+
+            _analysis_result = result
+            _project_path = tmp_dir
+
+            yield "data: " + json.dumps({
+                "stage": "complete", "status": "done", "progress": 100,
+                "result": _make_serializable(result),
+            }) + "\n\n"
+
+        except Exception as exc:
+            yield "data: " + json.dumps({
+                "stage": "error", "status": "error", "progress": 0,
+                "message": str(exc),
+            }) + "\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 # ── Full analysis pipeline ────────────────────────────────────────────────────
 def _run_full_analysis(file_paths: list[str]) -> dict:
     """Run every analyzer module and return a single merged result dict."""
@@ -785,7 +1017,16 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
     subprogram_index      = SubprogramIndexer(units).index()
     ast_info              = Parser(units).extract_ast()
     callgraph             = CallGraphBuilder(units).build()
-    dead_code             = DeadCodeDetector(callgraph).detect_unused_subprograms()
+
+    # Collect public subprogram names from .ads spec files
+    public_subps: set = set()
+    for fp in file_paths:
+        if fp.endswith(".ads"):
+            for subps in subprogram_index.values():
+                for s in subps:
+                    public_subps.add(s["name"])
+
+    dead_code             = DeadCodeDetector(callgraph, public_subps).detect_unused_subprograms()
     cyclomatic_complexity = ComplexityAnalyzer(units).compute()
     control_flow          = ControlFlowExtractor(units).run()
     loop_info             = LoopAnalyzer(units).detect()
@@ -798,7 +1039,7 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
     bug_report            = BugDetector(units).detect()
     performance_warnings  = PerformanceAnalyzer(units).analyze()
     test_harness_data     = TestHarnessGenerator(subprogram_index).generate()
-    mock_stub_data        = MockStubGenerator(callgraph).generate()
+    mock_stub_data        = MockStubGenerator(callgraph, subprogram_index).generate()
 
     return {
         "file_paths":             file_paths,

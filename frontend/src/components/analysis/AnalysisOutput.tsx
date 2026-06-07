@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   AlertTriangle, Code2, BarChart2, ChevronRight, Clock,
-  Bug, Zap, Shield, RefreshCw, Activity,
+  Bug, Zap, Shield, RefreshCw, Activity, Database,
 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useParseStore } from '../../store/useParseStore';
@@ -26,6 +26,7 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   const { results, activeResultFileId } = useParseStore();
   const { files, activeFileId } = useFileStore();
   const [lastRun] = useState(new Date());
+  const [varsTab, setVarsTab] = useState<'locals' | 'globals' | 'params' | 'usage'>('locals');
 
   // Resolve active analysis result
   const activeResult = activeResultFileId
@@ -64,15 +65,40 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   const tasks: string[] = analysis?.concurrency_info?.tasks ?? [];
   const protectedObjects: string[] = analysis?.protected_objects ?? [];
 
-  // ── Variables summary ──────────────────────────────────────────────────────
+  // ── Variables summary (new schema + legacy fallback) ──────────────────────
   const filePath = analysis?.file_paths?.[0] ?? '';
-  const localVarsCount = Object.values(analysis?.variables_info?.[filePath]?.local_variables ?? {})
-    .reduce((a, v) => a + Object.keys(v).length, 0);
-  const globalVarsCount = Object.values(analysis?.variables_info?.[filePath]?.global_variables ?? {})
-    .reduce((a, v) => a + Object.keys(v).length, 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const varFileInfo: any = analysis?.variables_info?.[filePath] ?? {};
+  // New schema
+  const varGlobals: Array<{ name: string; type: string; line: number; is_constant: boolean }> =
+    varFileInfo.globals ?? [];
+  const varLocals: Array<{ name: string; type: string; line: number; subprogram: string }> =
+    varFileInfo.locals ?? [];
+  const varParams: Array<{ name: string; type: string; mode: string; line: number; subprogram: string }> =
+    varFileInfo.parameters ?? [];
+  const varSummary = varFileInfo.summary ?? {};
+  const varGlobalUsage: Record<string, { reads: string[]; writes: string[] }> =
+    varFileInfo.global_usage ?? {};
 
-  // ── Global read/write ──────────────────────────────────────────────────────
-  const globalRW = analysis?.global_read_write?.[filePath] ?? { read: [], write: [] };
+  // Legacy fallback counts
+  const localVarsCount: number = varSummary.total_locals ??
+    Object.values((varFileInfo.local_variables ?? {}) as Record<string, Record<string, unknown>>).reduce((a: number, v) => a + Object.keys(v).length, 0);
+  const globalVarsCount: number = varSummary.total_globals ??
+    Object.values((varFileInfo.global_variables ?? {}) as Record<string, Record<string, unknown>>).reduce((a: number, v) => a + Object.keys(v).length, 0);
+  const constantsCount: number = varSummary.total_constants ?? 0;
+  const paramsCount: number = varSummary.total_params ?? varParams.length;
+
+  // ── Global read/write (new schema: read_by/write_by maps) ─────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const globalRWData: any = analysis?.global_read_write?.[filePath] ?? {};
+  // New schema
+  const readByMap: Record<string, string[]> = globalRWData.read_by ?? {};
+  const writeByMap: Record<string, string[]> = globalRWData.write_by ?? {};
+  const globalsInfo: Record<string, { type?: string }> = globalRWData.globals ?? {};
+  // Legacy fallback arrays
+  const legacyRead: string[] = globalRWData.read ?? Object.keys(readByMap);
+  const legacyWrite: string[] = globalRWData.write ?? Object.keys(writeByMap);
+  const hasGlobalRW = Object.keys(readByMap).length > 0 || Object.keys(writeByMap).length > 0 || legacyRead.length > 0 || legacyWrite.length > 0;
 
   // ── Control flow summary ───────────────────────────────────────────────────
   const controlFlow = analysis?.control_flow_extractor?.[filePath] ?? {};
@@ -309,18 +335,19 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
       )}
 
       {/* ── Variables Summary ───────────────────────────────────────────────── */}
-      {hasBackendData && (localVarsCount > 0 || globalVarsCount > 0) && (
+      {hasBackendData && (localVarsCount > 0 || globalVarsCount > 0 || paramsCount > 0) && (
         <div className={cardClass} style={cardStyle}>
           <div className="flex items-center gap-2 mb-2">
             <Zap size={13} className="text-amber-400" />
             <span className="text-xs font-mono font-semibold text-zinc-300">Variables</span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {/* Summary counts */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
             {[
-              { label: 'Local vars', value: localVarsCount, color: 'text-zinc-300' },
-              { label: 'Global vars', value: globalVarsCount, color: 'text-amber-400' },
-              { label: 'Loop count', value: Object.values(loopInfo).reduce((a, v) => a + v, 0), color: 'text-blue-400' },
-              { label: 'Exception handlers', value: Object.values(exceptionsInfo).reduce((a, v) => a + v, 0), color: 'text-red-400' },
+              { label: 'Globals', value: globalVarsCount, color: 'text-amber-400' },
+              { label: 'Locals', value: localVarsCount, color: 'text-zinc-300' },
+              { label: 'Params', value: paramsCount, color: 'text-blue-400' },
+              { label: 'Constants', value: constantsCount, color: 'text-green-400' },
             ].map((item) => (
               <div key={item.label} className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-800/40">
                 <span className="text-[10px] font-mono text-zinc-500">{item.label}</span>
@@ -328,40 +355,174 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
               </div>
             ))}
           </div>
+          {/* Tabs */}
+          <div className="flex gap-1 mb-2">
+            {(['locals', 'globals', 'params', 'usage'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setVarsTab(tab)}
+                className="px-2 py-0.5 rounded text-[9px] font-mono transition-colors"
+                style={{
+                  background: varsTab === tab ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)',
+                  color: varsTab === tab ? '#fbbf24' : '#71717a',
+                  border: varsTab === tab ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div className="max-h-48 overflow-y-auto">
+            {varsTab === 'locals' && varLocals.map((v, i) => (
+              <div key={i}
+                onClick={() => v.line && navigateToFile(v.line)}
+                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
+                <ChevronRight size={9} className="text-zinc-500 flex-shrink-0" />
+                <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                <span className="text-[9px] font-mono text-zinc-600">{v.subprogram}</span>
+                {v.line > 0 && <span className="text-[9px] font-mono text-zinc-700">:{v.line}</span>}
+              </div>
+            ))}
+            {varsTab === 'globals' && varGlobals.map((v, i) => (
+              <div key={i}
+                onClick={() => v.line && navigateToFile(v.line)}
+                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
+                <ChevronRight size={9} className={`flex-shrink-0 ${v.is_constant ? 'text-green-500' : 'text-amber-500'}`} />
+                <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                {v.is_constant && (
+                  <span className="text-[8px] font-mono px-1 rounded"
+                    style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}>const</span>
+                )}
+                {v.line > 0 && <span className="text-[9px] font-mono text-zinc-700">:{v.line}</span>}
+              </div>
+            ))}
+            {varsTab === 'params' && varParams.map((v, i) => (
+              <div key={i}
+                onClick={() => v.line && navigateToFile(v.line)}
+                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
+                <ChevronRight size={9} className="text-blue-500 flex-shrink-0" />
+                <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
+                <span className="text-[9px] font-mono text-blue-400 px-1 rounded"
+                  style={{ background: 'rgba(96,165,250,0.1)' }}>{v.mode}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                <span className="text-[9px] font-mono text-zinc-600">{v.subprogram}</span>
+              </div>
+            ))}
+            {varsTab === 'usage' && Object.entries(varGlobalUsage).map(([subp, usage]) => (
+              <div key={subp} className="mb-2">
+                <p className="text-[9px] font-mono text-zinc-500 mb-1 px-1">{subp}</p>
+                {usage.reads.length > 0 && (
+                  <div className="flex flex-wrap gap-1 px-1 mb-1">
+                    <span className="text-[8px] font-mono text-blue-400">reads:</span>
+                    {usage.reads.map((r, i) => (
+                      <span key={i} className="text-[8px] font-mono px-1 rounded"
+                        style={{ background: 'rgba(96,165,250,0.1)', color: '#93c5fd' }}>{r}</span>
+                    ))}
+                  </div>
+                )}
+                {usage.writes.length > 0 && (
+                  <div className="flex flex-wrap gap-1 px-1">
+                    <span className="text-[8px] font-mono text-red-400">writes:</span>
+                    {usage.writes.map((w, i) => (
+                      <span key={i} className="text-[8px] font-mono px-1 rounded"
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>{w}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {varsTab === 'usage' && Object.keys(varGlobalUsage).length === 0 && (
+              <p className="text-[10px] font-mono text-zinc-600 px-1">No global usage data</p>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Global Read / Write ─────────────────────────────────────────────── */}
-      {hasBackendData && (globalRW.read.length > 0 || globalRW.write.length > 0) && (
+      {hasBackendData && hasGlobalRW && (
         <div className={cardClass} style={cardStyle}>
           <div className="flex items-center gap-2 mb-2">
             <RefreshCw size={13} className="text-cyan-400" />
             <span className="text-xs font-mono font-semibold text-zinc-300">Global Read / Write</span>
+            <Database size={11} className="text-zinc-600 ml-auto" />
           </div>
-          {globalRW.write.length > 0 && (
-            <div className="mb-2">
-              <p className="text-[10px] font-mono text-red-400 mb-1">Written ({globalRW.write.length})</p>
-              <div className="flex flex-wrap gap-1">
-                {globalRW.write.map((v, i) => (
-                  <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-                    style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
-                    {v}
-                  </span>
-                ))}
-              </div>
+          {/* Written globals */}
+          {(Object.keys(writeByMap).length > 0 || legacyWrite.length > 0) && (
+            <div className="mb-3">
+              <p className="text-[10px] font-mono text-red-400 mb-1">
+                Written ({Object.keys(writeByMap).length || legacyWrite.length})
+              </p>
+              {Object.keys(writeByMap).length > 0
+                ? Object.entries(writeByMap).map(([varName, subps]) => (
+                    <div key={varName} className="mb-1.5">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] font-mono font-semibold text-red-300">{varName}</span>
+                        {globalsInfo[varName]?.type && (
+                          <span className="text-[9px] font-mono text-zinc-600">{globalsInfo[varName].type}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pl-2">
+                        {subps.map((s, i) => (
+                          <span key={i} className="px-1.5 py-0.5 rounded text-[8px] font-mono"
+                            style={{ background: 'rgba(239,68,68,0.08)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)' }}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : (
+                  <div className="flex flex-wrap gap-1">
+                    {legacyWrite.map((v, i) => (
+                      <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                )
+              }
             </div>
           )}
-          {globalRW.read.length > 0 && (
+          {/* Read globals */}
+          {(Object.keys(readByMap).length > 0 || legacyRead.length > 0) && (
             <div>
-              <p className="text-[10px] font-mono text-blue-400 mb-1">Read ({globalRW.read.length})</p>
-              <div className="flex flex-wrap gap-1">
-                {globalRW.read.map((v, i) => (
-                  <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-                    style={{ background: 'rgba(96,165,250,0.1)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.2)' }}>
-                    {v}
-                  </span>
-                ))}
-              </div>
+              <p className="text-[10px] font-mono text-blue-400 mb-1">
+                Read ({Object.keys(readByMap).length || legacyRead.length})
+              </p>
+              {Object.keys(readByMap).length > 0
+                ? Object.entries(readByMap).map(([varName, subps]) => (
+                    <div key={varName} className="mb-1.5">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] font-mono font-semibold text-blue-300">{varName}</span>
+                        {globalsInfo[varName]?.type && (
+                          <span className="text-[9px] font-mono text-zinc-600">{globalsInfo[varName].type}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pl-2">
+                        {subps.map((s, i) => (
+                          <span key={i} className="px-1.5 py-0.5 rounded text-[8px] font-mono"
+                            style={{ background: 'rgba(96,165,250,0.08)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.2)' }}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : (
+                  <div className="flex flex-wrap gap-1">
+                    {legacyRead.map((v, i) => (
+                      <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                        style={{ background: 'rgba(96,165,250,0.1)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.2)' }}>
+                        {v}
+                      </span>
+                    ))}
+                  </div>
+                )
+              }
             </div>
           )}
         </div>

@@ -16,6 +16,33 @@ class BugDetector:
     def __init__(self, units):
         self.units = units
 
+    @staticmethod
+    def _has_null_guard(node) -> bool:
+        """Return True if there is an enclosing if-statement that checks for null
+        on the same prefix, indicating the dereference is guarded."""
+        try:
+            prefix_text = node.f_prefix.text.strip().lower() if node.f_prefix else ""
+        except Exception:
+            return False
+
+        parent = node.parent
+        while parent:
+            if isinstance(parent, lal.IfStmt):
+                try:
+                    cond = (parent.f_cond_expr.text or "").lower()
+                    # Patterns: "ptr /= null", "ptr != null", "not (ptr = null)"
+                    if prefix_text and (
+                        f"{prefix_text} /= null" in cond
+                        or f"{prefix_text} != null" in cond
+                        or f"not ({prefix_text} = null)" in cond
+                        or f"{prefix_text} \\= null" in cond
+                    ):
+                        return True
+                except Exception:
+                    pass
+            parent = parent.parent
+        return False
+
     def detect(self) -> dict:
         result = {
             "division_by_zero": [],
@@ -46,6 +73,8 @@ class BugDetector:
             # ── Null dereference (access .all without null check nearby) ──
             for deref in unit.root.findall(lal.ExplicitDeref):
                 try:
+                    if self._has_null_guard(deref):
+                        continue
                     prefix_text = deref.f_prefix.text.strip() if deref.f_prefix and deref.f_prefix.text else ""
                     result["null_dereference"].append({
                         "file": filename,
