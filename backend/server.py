@@ -328,41 +328,188 @@ def _simulate_execution(subp_name: str, inputs: dict, expected: dict, subp_data_
     }
 
 
+def _initial_value_from_cf(cf_subp: dict, var_name: str) -> str:
+    """Pull the initial/assigned value for a variable from control_flow data."""
+    bv = cf_subp.get("branch_body_variables", {})
+    entry = bv.get(var_name)
+    if entry:
+        return entry.get("assigned_from", entry.get("initial_value", ""))
+    # case-insensitive fallback
+    vl = var_name.lower()
+    for k, v in bv.items():
+        if k.lower() == vl:
+            return v.get("assigned_from", v.get("initial_value", ""))
+    return ""
+
+
+def _cf_all_vars(cf_subp: dict) -> list:
+    """
+    Return every variable found in branch_body_variables that has a
+    non-unknown type. These are variables declared inside if/for/while/declare
+    blocks that VariablesAnalyzer misses because it only walks top-level ObjectDecl.
+    """
+    bv = cf_subp.get("branch_body_variables", {})
+    result = []
+    for vname, info in bv.items():
+        dt = info.get("data_type", {})
+        t  = dt.get("type", "Unknown") if isinstance(dt, dict) else str(dt)
+        if t in ("Unknown", "", None):
+            continue
+        result.append({
+            "name":          vname,
+            "type":          t,
+            "scope":         "loop/cond",
+            "initial_value": info.get("assigned_from", ""),
+            "source":        info.get("used_in_branch", ""),
+        })
+    return result
+
+
+def _resolve_var_type_from_registry(var_name: str, cf_data_all: dict) -> str:
+    """Look up var_name in __registry__.objects (case-insensitive)."""
+    registry = cf_data_all.get("__registry__", {})
+    objects  = registry.get("objects", {})
+    vl = var_name.lower()
+    for k, v in objects.items():
+        if k.lower() == vl:
+            dt = v.get("data_type", {})
+            if isinstance(dt, dict):
+                return dt.get("type", "Unknown")
+            return str(dt) if dt else "Unknown"
+    return "Unknown"
+
+
+def _resolve_field_type(rec_var_type: str, field_name: str, cf_data_all: dict) -> str:
+    """
+    Given a record variable's declared type and a field name, look up
+    the field's Ada type from __registry__.types, following subtype chains.
+    """
+    registry  = cf_data_all.get("__registry__", {})
+    types     = registry.get("types", {})
+    rec_entry = None
+    for k, v in types.items():
+        if k.lower() == rec_var_type.lower():
+            rec_entry = v
+            break
+    if rec_entry is None:
+        return "Unknown"
+    # follow subtype / alias chain (max 10 hops)
+    depth = 0
+    while rec_entry.get("kind") in ("subtype", "alias") and depth < 10:
+        base = rec_entry.get("base_type") or rec_entry.get("base", "")
+        if not base:
+            break
+        found = None
+        for k, v in types.items():
+            if k.lower() == base.lower():
+                found = v
+                break
+        if found is None:
+            break
+        rec_entry = found
+        depth += 1
+    if rec_entry.get("kind") != "record":
+        return "Unknown"
+    for fname, finfo in rec_entry.get("record_fields", {}).items():
+        if fname.lower() == field_name.lower():
+            st = finfo.get("structured_type", {})
+            rt = finfo.get("raw_type", "")
+            if isinstance(st, dict):
+                return st.get("type", rt or "Unknown")
+            return rt or "Unknown"
+    return "Unknown"
+
+
+def _parse_params(raw_params: list[str]) -> list[dict]:
+    """Parse raw 'Name : [mode] Type' param strings into structured dicts."""
+    params = []
+    for raw in raw_params:
+        for segment in raw.split(";"):
+            segment = segment.strip()
+            if not segment or ":" not in segment:
+                continue
+            names_part, type_part = segment.split(":", 1)
+            type_clean = type_part.strip()
+            dir_kw = "in"
+            if "in out" in type_part.lower() or "in  out" in type_part.lower():
+                dir_kw = "in out"
+            elif "out" in type_part.lower():
+                dir_kw = "out"
+            for kw in ("in out", "in  out", "out", "in "):
+                if type_clean.lower().startswith(kw):
+                    type_clean = type_clean[len(kw):].strip()
+                    break
+            # strip default value  e.g. "Natural := 0"
+            if ":=" in type_clean:
+                type_clean = type_clean.split(":=")[0].strip()
+            for pname in names_part.split(","):
+                pname = pname.strip()
+                if pname:
+                    params.append({
+                        "name":            pname,
+                        "dir":             dir_kw,
+                        "type":            type_clean,
+                        "type_normalized": type_clean.lower(),
+                        "constraint":      _type_constraint(type_clean),
+                    })
+    return params
+
+
 def _build_enriched_subprograms() -> list:
-    """Build enriched subprogram list with variables, params, type constraints."""
+    """
+    Build enriched subprogram list with variables, params, and type constraints.
+
+    Variable collection uses three passes so nothing is missed:
+      Pass 1 — parameters (parsed from raw param strings)
+      Pass 2 — local / global / constant vars from VariablesAnalyzer
+      Pass 3 — loop/conditional body vars from ControlFlowExtractor
+                (catches variables inside if/for blocks that Pass 2 misses)
+
+    Dotted names like 'Rec.Field' are handled by looking up the field type
+    through the control_flow __registry__ if available.
+    """
     idx        = _analysis_result.get("subprogram_index", {})
     var_info   = _analysis_result.get("variables_info", {})
     complexity = _analysis_result.get("cyclomatic_complexity", {})
     dead_code  = _analysis_result.get("dead_code", [])
     call_graph = _analysis_result.get("call_graph", {})
+    cf_data    = _analysis_result.get("control_flow_extractor", {})
 
     out = []
     for filepath, subps in idx.items():
         file_vars = var_info.get(filepath, {})
+        cf_file   = cf_data.get(filepath, {})
+
         for s in subps:
             name     = s["name"]
             locals_  = file_vars.get("local_variables",  {}).get(name, {})
             globals_ = file_vars.get("global_variables", {}).get(name, {})
             consts_  = file_vars.get("global_constants", {}).get(name, {})
+            cf_subp  = cf_file.get(name, {})
 
-            variables = []
-            for scope_name, scope_dict in [
-                ("local",    locals_),
-                ("global",   globals_),
-                ("constant", consts_),
-            ]:
-                for vname, vtype in scope_dict.items():
-                    t = vtype.get("type", "Unknown") if isinstance(vtype, dict) else str(vtype)
-                    variables.append({
-                        "name":            vname,
-                        "type":            t,
-                        "type_normalized": t.lower(),
-                        "scope":           scope_name,
-                        "constraint":      _type_constraint(t),
-                    })
+            seen:      set  = set()
+            variables: list = []
 
-            # Parse raw param strings into structured list with type constraints
-            params = []
+            def _add(vname: str, t: str, scope: str,
+                     initial: str = "", source: str = "", extra: dict | None = None):
+                key = vname.lower()
+                if key in seen:
+                    return
+                seen.add(key)
+                entry = {
+                    "name":            vname,
+                    "type":            t,
+                    "type_normalized": t.lower(),
+                    "scope":           scope,
+                    "constraint":      _type_constraint(t),
+                    "initial_value":   initial,
+                    "source":          source,
+                }
+                if extra:
+                    entry.update(extra)
+                variables.append(entry)
+
+            # ── Pass 1: parameters ────────────────────────────────────────
             for raw in s.get("parameters", []):
                 for segment in raw.split(";"):
                     segment = segment.strip()
@@ -379,16 +526,100 @@ def _build_enriched_subprograms() -> list:
                         if type_clean.lower().startswith(kw):
                             type_clean = type_clean[len(kw):].strip()
                             break
+                    if ":=" in type_clean:
+                        type_clean = type_clean.split(":=")[0].strip()
                     for pname in names_part.split(","):
                         pname = pname.strip()
-                        if pname:
-                            params.append({
-                                "name":            pname,
-                                "dir":             dir_kw,
-                                "type":            type_clean,
-                                "type_normalized": type_clean.lower(),
-                                "constraint":      _type_constraint(type_clean),
+                        if not pname:
+                            continue
+                        t = type_clean
+                        # fallback: try registry if type came out empty
+                        if not t or t == "Unknown":
+                            t = _resolve_var_type_from_registry(pname, cf_data)
+                        _add(pname, t, "param", source=f"{dir_kw} parameter")
+
+            # ── Pass 2: locals / globals / constants ──────────────────────
+            for scope_name, scope_dict, is_const in [
+                ("local",    locals_,  False),
+                ("global",   globals_, False),
+                ("constant", consts_,  True),
+            ]:
+                for vname, vtype in scope_dict.items():
+                    t = vtype.get("type", "Unknown") if isinstance(vtype, dict) else str(vtype)
+
+                    # ── dotted name: e.g. Uplink.LineCentre ──────────────
+                    if "." in vname:
+                        rec_var, field_nm = vname.split(".", 1)
+                        if t in ("Unknown", "", None):
+                            # try control_flow branch_body_variables first
+                            bv = cf_subp.get("branch_body_variables", {})
+                            for k, v in bv.items():
+                                if k.lower() == vname.lower():
+                                    dt = v.get("data_type", {})
+                                    t  = dt.get("type", "Unknown") if isinstance(dt, dict) else str(dt)
+                                    break
+                        if t in ("Unknown", "", None):
+                            # try registry field lookup
+                            rec_type = _resolve_var_type_from_registry(rec_var, cf_data)
+                            if rec_type not in ("Unknown", "", None):
+                                t = _resolve_field_type(rec_type, field_nm, cf_data)
+                        key = vname.lower()
+                        if key not in seen:
+                            seen.add(key)
+                            variables.append({
+                                "name":            vname,
+                                "type":            t,
+                                "type_normalized": t.lower(),
+                                "scope":           scope_name,
+                                "constraint":      _type_constraint(t),
+                                "initial_value":   _initial_value_from_cf(cf_subp, vname),
+                                "source":          f"field of {rec_var}",
+                                "record_parent":   rec_var,
+                                "record_field":    field_nm,
                             })
+                        continue
+
+                    # ── plain variable ────────────────────────────────────
+                    if t in ("Unknown", "", None):
+                        t = _resolve_var_type_from_registry(vname, cf_data)
+                    # pull initial value for constants / declared vars
+                    init = ""
+                    if is_const and isinstance(vtype, dict):
+                        init = (vtype.get("value", "")
+                                or vtype.get("initial_value", "")
+                                or vtype.get("init", ""))
+                    if not init:
+                        init = _initial_value_from_cf(cf_subp, vname)
+                    _add(vname, t, scope_name, initial=init)
+
+            # ── Pass 3: loop / conditional body vars (deep scan) ──────────
+            for entry in _cf_all_vars(cf_subp):
+                vname = entry["name"]
+                t     = entry["type"]
+                if "." in vname:
+                    rec_var, field_nm = vname.split(".", 1)
+                    if t in ("Unknown", "", None):
+                        rec_type = _resolve_var_type_from_registry(rec_var, cf_data)
+                        if rec_type not in ("Unknown", "", None):
+                            t = _resolve_field_type(rec_type, field_nm, cf_data)
+                    key = vname.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        variables.append({
+                            "name":            vname,
+                            "type":            t,
+                            "type_normalized": t.lower(),
+                            "scope":           "loop/cond",
+                            "constraint":      _type_constraint(t),
+                            "initial_value":   entry.get("initial_value", ""),
+                            "source":          f"field of {rec_var} (in {entry.get('source', '')})",
+                            "record_parent":   rec_var,
+                            "record_field":    field_nm,
+                        })
+                else:
+                    _add(vname, t, "loop/cond",
+                         initial=entry.get("initial_value", ""),
+                         source=entry.get("source", ""))
 
             out.append({
                 "name":        name,
@@ -397,7 +628,7 @@ def _build_enriched_subprograms() -> list:
                 "start_line":  s.get("start_line"),
                 "end_line":    s.get("end_line"),
                 "return_type": s.get("return_type"),
-                "params":      params,
+                "params":      _parse_params(s.get("parameters", [])),
                 "variables":   variables,
                 "complexity":  complexity.get(name),
                 "is_dead":     name in dead_code,
