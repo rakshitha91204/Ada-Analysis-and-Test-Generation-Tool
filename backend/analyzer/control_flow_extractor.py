@@ -92,7 +92,9 @@ def _build_scope(subp: lal.SubpBody, variables_info: dict, subp_name: str) -> di
     # 3. For-loop iterators
     for for_loop in subp.findall(lal.ForLoopStmt):
         try:
-            vd = for_loop.f_var_decl
+            # ForLoopVarDecl is on f_spec.f_var_decl, not directly on ForLoopStmt
+            spec = for_loop.f_spec
+            vd = spec.f_var_decl
             iter_name = vd.f_id.text
             # Try explicit type annotation first
             iter_type = "Integer"
@@ -103,7 +105,19 @@ def _build_scope(subp: lal.SubpBody, variables_info: dict, subp_name: str) -> di
                 pass
             _add(iter_name, iter_type)
         except Exception:
-            pass
+            # Fallback: try direct f_var_decl on the stmt (older libadalang API)
+            try:
+                vd = for_loop.f_var_decl
+                iter_name = vd.f_id.text
+                iter_type = "Integer"
+                try:
+                    if vd.f_id_type and vd.f_id_type.text.strip():
+                        iter_type = vd.f_id_type.text.strip()
+                except Exception:
+                    pass
+                _add(iter_name, iter_type)
+            except Exception:
+                pass
 
     # 4. Merge from variables_info (fills gaps: loop vars, nested vars)
     vi = variables_info or {}
@@ -119,12 +133,26 @@ def _build_scope(subp: lal.SubpBody, variables_info: dict, subp_name: str) -> di
         if v.get("subprogram") == subp_name and v.get("name", "").lower() not in scope:
             _add(v.get("name", ""), v.get("type", "Unknown"))
 
+    # Also include parameters of ALL subprograms (covers nested subprogram params
+    # that may be referenced in outer conditions when declared inside this body)
+    for v in vi.get("parameters", []):
+        if v.get("name", "").lower() not in scope:
+            _add(v.get("name", ""), v.get("type", "Unknown"))
+
     # Legacy nested-dict schema: local_variables/global_variables/global_constants
     for scope_key in ("local_variables", "global_variables", "global_constants"):
         for vname, vinfo in vi.get(scope_key, {}).get(subp_name, {}).items():
             if vname.lower() not in scope:
                 t = vinfo.get("type", "Unknown") if isinstance(vinfo, dict) else str(vinfo)
                 _add(vname, t)
+
+    # Also merge legacy locals from ALL subprograms (catches nested subp locals)
+    for other_subp, var_dict in vi.get("local_variables", {}).items():
+        for vname, vinfo in var_dict.items():
+            if vname.lower() not in scope:
+                t = vinfo.get("type", "Unknown") if isinstance(vinfo, dict) else str(vinfo)
+                if t != "Unknown":
+                    _add(vname, t)
 
     return scope
 
@@ -301,6 +329,18 @@ class ControlFlowExtractor:
                         continue
                 except Exception:
                     pass
+                # Skip function call names: if parent is CallExpr and ident is f_name
+                try:
+                    p = ident.parent
+                    if p and isinstance(p, lal.CallExpr) and p.f_name == ident:
+                        continue
+                    # Also skip dotted call prefixes like BMP_Fonts.Data
+                    if p and isinstance(p, lal.DottedName):
+                        gp = p.parent
+                        if gp and isinstance(gp, lal.CallExpr) and gp.f_name == p:
+                            continue
+                except Exception:
+                    pass
                 base = name.split('.')[0].split('(')[0].strip()
                 base_lower = base.lower()
                 if base_lower in found:
@@ -312,10 +352,22 @@ class ControlFlowExtractor:
                         "data_type": {"type": t},
                     }
                 else:
+                    # Not in scope — try to infer from identifier name patterns
+                    nl = base_lower
+                    inferred = "Unknown"
+                    if any(p in nl for p in ("count","index","idx","num","size","len","pos","ret","val","n","i","j","k","vert","line","col","width","height","offset")):
+                        inferred = "Integer"
+                    elif any(p in nl for p in ("flag","is_","has_","enabled","init","valid","done","ready","bool")):
+                        inferred = "Boolean"
+                    elif any(p in nl for p in ("char","letter","symbol","c")):
+                        if len(nl) <= 2:  # short names like 'c', 'ch' likely chars
+                            inferred = "Character"
+                    elif any(p in nl for p in ("ratio","rate","factor","scale","float","f")):
+                        inferred = "Float"
                     # Emit unresolved so it's visible in output
                     found[base] = {
                         "kind": "unresolved",
-                        "data_type": {"type": "Unknown"},
+                        "data_type": {"type": inferred},
                     }
         except Exception:
             pass
