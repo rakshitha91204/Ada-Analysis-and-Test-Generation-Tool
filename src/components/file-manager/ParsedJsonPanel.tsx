@@ -356,19 +356,25 @@ export const ParsedJsonPanel: React.FC = () => {
                     const d = JSON.parse(activeResult.jsonText) as import('../../utils/adaAnalyzer').AdaAnalysisResult;
                     const filePath = d.file_paths?.[0] ?? '';
                     const subs = d.subprogram_index?.[filePath]?.length ?? 0;
-                    // Support both new schema (globals/locals lists + summary) and legacy (nested dicts)
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const varInfo: any = (d.variables_info as any)?.[filePath] ?? {};
+                    // Prefer new summary/list schema, fall back to legacy nested dicts
                     const localVars: number =
                       varInfo.summary?.total_locals
                       ?? varInfo.locals?.length
                       ?? Object.values(varInfo.local_variables ?? {}).reduce((a: number, v: unknown) => a + Object.keys(v as object).length, 0);
                     const globalVars: number =
                       varInfo.summary?.total_globals
-                      ?? varInfo.globals?.length
+                      ?? varInfo.globals?.filter((g: {is_constant: boolean}) => !g.is_constant)?.length
                       ?? Object.values(varInfo.global_variables ?? {}).reduce((a: number, v: unknown) => a + Object.keys(v as object).length, 0);
-                    const paramsCount: number = varInfo.summary?.total_params ?? varInfo.parameters?.length ?? 0;
-                    const constsCount: number = varInfo.summary?.total_constants ?? varInfo.globals?.filter((g: {is_constant: boolean}) => g.is_constant).length ?? 0;
+                    const paramsCount: number =
+                      varInfo.summary?.total_params
+                      ?? varInfo.parameters?.length
+                      ?? 0;
+                    const constsCount: number =
+                      varInfo.summary?.total_constants
+                      ?? varInfo.globals?.filter((g: {is_constant: boolean}) => g.is_constant)?.length
+                      ?? Object.values(varInfo.global_constants ?? {}).reduce((a: number, v: unknown) => a + Object.keys(v as object).length, 0);
                     const dead = d.dead_code?.length ?? 0;
                     const bugs = d.bug_report
                       ? (d.bug_report.division_by_zero.length + d.bug_report.null_dereference.length +

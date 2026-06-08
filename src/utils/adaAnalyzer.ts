@@ -63,9 +63,28 @@ export interface ControlFlowEntry {
 }
 
 export interface VariablesForFile {
-  global_variables: Record<string, Record<string, { type: string }>>;
-  global_constants: Record<string, Record<string, { type: string }>>;
-  local_variables: Record<string, Record<string, { type: string }>>;
+  // Legacy schema (still populated by backend for compatibility)
+  global_variables: Record<string, Record<string, { type: string; expanded_type?: unknown }>>;
+  global_constants: Record<string, Record<string, { type: string; expanded_type?: unknown }>>;
+  local_variables:  Record<string, Record<string, { type: string; expanded_type?: unknown }>>;
+  // New flat-list schema (richer — includes line numbers, modes, expanded types)
+  globals?:     Array<{ name: string; type: string; expanded_type?: unknown; is_constant: boolean; default?: string | null; line: number }>;
+  locals?:      Array<{ name: string; type: string; expanded_type?: unknown; is_constant: boolean; default?: string | null; line: number; subprogram: string }>;
+  parameters?:  Array<{ name: string; type: string; expanded_type?: unknown; mode: string; line: number; subprogram: string }>;
+  global_usage?: Record<string, { reads: string[]; writes: string[] }>;
+  variables_by_scope?: {
+    global_variables: Record<string, { type: string; expanded_type?: unknown }>;
+    global_constants: Record<string, { type: string; expanded_type?: unknown }>;
+    local_variables:  Record<string, Record<string, { type: string; expanded_type?: unknown; subprogram?: string }>>;
+  };
+  summary?: {
+    total_globals: number;
+    total_constants: number;
+    total_locals: number;
+    total_params: number;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  __registry__?: Record<string, any>;
 }
 
 // ── New fields from fully-connected backend ───────────────────────────────────
@@ -522,17 +541,45 @@ function extractConditionVars(
     if (
       !/^(and|or|not|in|out|if|then|else|elsif|when|true|false|null|integer|float|boolean|natural|positive)$/i.test(name)
     ) {
-      vars[name] = { kind: 'unresolved', data_type: { type: 'Unknown' } };
+      // Try to infer type from the identifier name patterns
+      const nl = name.toLowerCase();
+      let inferredType = 'Unknown';
+      if (/count|index|idx|num|size|length|line|col|width|height|pos|offset|n$|i$|j$|k$/.test(nl)) inferredType = 'Integer';
+      else if (/flag|is_|has_|enabled|initialized|valid|done|ready/.test(nl)) inferredType = 'Boolean';
+      else if (/char|letter|symbol/.test(nl)) inferredType = 'Character';
+      vars[name] = { kind: 'unresolved', data_type: { type: inferredType } };
     }
   }
   return vars;
 }
 
 function inferType(rhs: string): string {
-  if (/^\d+$/.test(rhs.trim())) return 'Integer';
-  if (/^\d+\.\d+$/.test(rhs.trim())) return 'Float';
-  if (/^(true|false)$/i.test(rhs.trim())) return 'Boolean';
-  if (/^"/.test(rhs.trim())) return 'String';
-  if (/^'.'$/.test(rhs.trim())) return 'Character';
+  const t = rhs.trim();
+  if (/^\d+$/.test(t)) return 'Integer';
+  if (/^\d+\.\d+$/.test(t)) return 'Float';
+  if (/^(true|false)$/i.test(t)) return 'Boolean';
+  if (/^"/.test(t)) return 'String';
+  if (/^'.'$/.test(t)) return 'Character';
+  // Type attribute: Integer_8'Min(...) → Integer_8
+  if (/'/.test(t)) {
+    const candidate = t.split("'")[0].trim();
+    if (candidate && /^[A-Z]/.test(candidate) && !/\s/.test(candidate)) return candidate;
+  }
+  // Type conversion: Natural(...) → Natural
+  if (/\($/.test(t) === false && /\(/.test(t)) {
+    const fn = t.split('(')[0].trim();
+    if (fn && /^[A-Z]/.test(fn) && !/\s/.test(fn) && !fn.includes('.')) return fn;
+  }
+  // Arithmetic with a known identifier: use name heuristics
+  for (const op of ['+', '-', '*', '/']) {
+    if (t.includes(op)) {
+      const first = t.split(op)[0].trim().split('(')[0].split('.')[0].trim();
+      if (first && /^[A-Za-z_]/.test(first)) {
+        const nl = first.toLowerCase();
+        if (/count|index|idx|num|size|length|ret|val|sum|total/.test(nl)) return 'Integer';
+        if (/ratio|rate|factor|float/.test(nl)) return 'Float';
+      }
+    }
+  }
   return 'Unknown';
 }

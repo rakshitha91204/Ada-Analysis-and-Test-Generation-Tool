@@ -509,6 +509,42 @@ def _build_enriched_subprograms() -> list:
                     entry.update(extra)
                 variables.append(entry)
 
+            # ── Pass 0: flat-list schema from VariablesAnalyzer ──────────
+            # Read parameters, locals, globals from the new list-based schema.
+            # This is richer than the legacy dicts and includes line numbers.
+            for p in file_vars.get("parameters", []):
+                if p.get("subprogram") == name and p.get("name"):
+                    t = p.get("type", "Unknown") or "Unknown"
+                    if t == "Unknown":
+                        t = _resolve_var_type_from_registry(p["name"], cf_data)
+                    _add(p["name"], t, "param",
+                         source=f"{p.get('mode','in')} parameter")
+
+            for v in file_vars.get("locals", []):
+                if v.get("subprogram") == name and v.get("name"):
+                    t = v.get("type", "Unknown") or "Unknown"
+                    if t == "Unknown":
+                        t = _resolve_var_type_from_registry(v["name"], cf_data)
+                    init = v.get("default") or ""
+                    _add(v["name"], t,
+                         "constant" if v.get("is_constant") else "local",
+                         initial=str(init) if init else "")
+
+            # Global vars used by this subprogram (via global_usage)
+            usage = file_vars.get("global_usage", {}).get(name, {})
+            used_global_names = set(
+                usage.get("reads", []) + usage.get("writes", [])
+            )
+            for g in file_vars.get("globals", []):
+                if g.get("name") in used_global_names:
+                    t = g.get("type", "Unknown") or "Unknown"
+                    if t == "Unknown":
+                        t = _resolve_var_type_from_registry(g["name"], cf_data)
+                    init = g.get("default") or ""
+                    _add(g["name"], t,
+                         "constant" if g.get("is_constant") else "global",
+                         initial=str(init) if init else "")
+
             # ── Pass 1: parameters ────────────────────────────────────────
             for raw in s.get("parameters", []):
                 for segment in raw.split(";"):

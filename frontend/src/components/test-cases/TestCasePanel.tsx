@@ -105,23 +105,59 @@ function buildStudioSubprogram(
     }
   }
 
-  // Build variables from variables_info — use actualName for lookup
+  // Build variables from variables_info — multi-schema lookup
   const variables: StudioVariable[] = [];
   const fileVars = (analysis.variables_info || {})[filePath] || {};
-  const locals  = (fileVars.local_variables  || {})[actualName] || {};
-  const globals = (fileVars.global_variables || {})[actualName] || {};
-  const consts  = (fileVars.global_constants || {})[actualName] || {};
-  for (const [vname, vdata] of Object.entries(locals)) {
-    const t = (vdata as {type:string}).type || 'Unknown';
-    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'local', constraint:typeConstraint(t) });
+  const seen = new Set<string>();
+
+  const addVar = (name: string, type: string, scope: 'local'|'global'|'constant') => {
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    const t = type || 'Unknown';
+    variables.push({ name, type: t, type_normalized: t.toLowerCase(), scope, constraint: typeConstraint(t) });
+  };
+
+  // ── Pass 1: flat-list schema (richer, has line numbers and subprogram tag) ──
+  // Parameters from flat list
+  for (const p of (fileVars.parameters || [])) {
+    if ((p.subprogram === actualName || p.subprogram?.toLowerCase() === nameLower) && p.name) {
+      addVar(p.name, p.type || 'Unknown', 'local');
+    }
   }
-  for (const [vname, vdata] of Object.entries(globals)) {
-    const t = (vdata as {type:string}).type || 'Unknown';
-    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'global', constraint:typeConstraint(t) });
+  // Locals from flat list
+  for (const v of (fileVars.locals || [])) {
+    if ((v.subprogram === actualName || v.subprogram?.toLowerCase() === nameLower) && v.name) {
+      addVar(v.name, v.type || 'Unknown', v.is_constant ? 'constant' : 'local');
+    }
   }
-  for (const [vname, vdata] of Object.entries(consts)) {
-    const t = (vdata as {type:string}).type || 'Unknown';
-    variables.push({ name:vname, type:t, type_normalized:t.toLowerCase(), scope:'constant', constraint:typeConstraint(t) });
+  // Globals from flat list (used by this subprogram via global_usage)
+  const usedGlobals = new Set<string>([
+    ...((fileVars.global_usage || {})[actualName]?.reads || []),
+    ...((fileVars.global_usage || {})[actualName]?.writes || []),
+  ]);
+  for (const g of (fileVars.globals || [])) {
+    if (usedGlobals.has(g.name) && g.name) {
+      addVar(g.name, g.type || 'Unknown', g.is_constant ? 'constant' : 'global');
+    }
+  }
+
+  // ── Pass 2: legacy dict schema (fallback / supplement) ──────────────────────
+  const legacyLocals  = (fileVars.local_variables  || {})[actualName] || {};
+  const legacyGlobals = (fileVars.global_variables || {})[actualName] || {};
+  const legacyConsts  = (fileVars.global_constants || {})[actualName] || {};
+
+  for (const [vname, vdata] of Object.entries(legacyLocals)) {
+    const t = (vdata as { type: string }).type || 'Unknown';
+    addVar(vname, t, 'local');
+  }
+  for (const [vname, vdata] of Object.entries(legacyGlobals)) {
+    const t = (vdata as { type: string }).type || 'Unknown';
+    addVar(vname, t, 'global');
+  }
+  for (const [vname, vdata] of Object.entries(legacyConsts)) {
+    const t = (vdata as { type: string }).type || 'Unknown';
+    addVar(vname, t, 'constant');
   }
 
   const fileName = filePath.split(/[\\/]/).pop() || filePath;

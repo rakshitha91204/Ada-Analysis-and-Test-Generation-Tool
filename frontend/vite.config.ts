@@ -11,11 +11,19 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Proxy /api/* → Python FastAPI backend on port 8000
+      // Proxy /api/* → Python FastAPI backend on port 8001 (keep the /api prefix)
       '/api': {
         target: 'http://localhost:8001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      // Proxy /analyze and /health (root-level FastAPI endpoints)
+      '/analyze': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
       },
     },
   },
