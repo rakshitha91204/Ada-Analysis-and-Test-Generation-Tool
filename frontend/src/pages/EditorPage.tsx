@@ -181,74 +181,42 @@ const EditorPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-      {/* Topbar */}
-      <div
-        className="flex items-center gap-2 px-3 flex-shrink-0 border-b"
-        style={{ height: 40, background: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Diamond size={16} className="text-amber-400" />
-          <span className="text-xs font-mono font-semibold text-zinc-300 hidden sm:block">Ada IDE</span>
+
+      {/* ── Topbar ──────────────────────────────────────────────────────────── */}
+      <div className="ide-topbar">
+        <div className="ide-topbar-logo">
+          <Diamond size={15} style={{ color: 'var(--accent-primary)' }} />
+          <span className="hidden sm:block">Ada IDE</span>
         </div>
 
-        <div className="w-px h-5 bg-zinc-700 flex-shrink-0" />
+        <div className="ide-topbar-sep" />
 
-        {/* Breadcrumbs */}
         <div className="flex-1 min-w-0">
           <Breadcrumbs />
         </div>
 
-        {/* Right actions */}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          {/* Command palette */}
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
           <Tooltip content="Command Palette (Ctrl+K)">
-            <IconButton icon={<Search size={14} />} label="Command Palette" onClick={() => setCmdOpen(true)} />
+            <button className="icon-btn" onClick={() => setCmdOpen(true)}><Search size={14} /></button>
           </Tooltip>
-
-          {/* Font size */}
-          <Tooltip content="Decrease font size (Ctrl+-)">
-            <IconButton icon={<ZoomOut size={13} />} label="Decrease font" onClick={() => setFontSize(fontSize - 1)} />
+          <div className="ide-topbar-sep mx-1" />
+          <Tooltip content="Decrease font">
+            <button className="icon-btn" onClick={() => setFontSize(Math.max(10, fontSize - 1))}><ZoomOut size={13} /></button>
           </Tooltip>
-          <span className="text-[10px] font-mono text-zinc-600 w-6 text-center">{fontSize}</span>
-          <Tooltip content="Increase font size (Ctrl++)">
-            <IconButton icon={<ZoomIn size={13} />} label="Increase font" onClick={() => setFontSize(fontSize + 1)} />
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)', width: 22, textAlign: 'center' }}>{fontSize}</span>
+          <Tooltip content="Increase font">
+            <button className="icon-btn" onClick={() => setFontSize(Math.min(22, fontSize + 1))}><ZoomIn size={13} /></button>
           </Tooltip>
-
-          <div className="w-px h-4 bg-zinc-700 mx-1" />
-
-          {/* Minimap toggle */}
-          <Tooltip content={`${minimapEnabled ? 'Hide' : 'Show'} minimap (Ctrl+M)`}>
-            <IconButton
-              icon={<Map size={14} />}
-              label="Toggle minimap"
-              active={minimapEnabled}
-              onClick={() => setMinimapEnabled(!minimapEnabled)}
-            />
+          <div className="ide-topbar-sep mx-1" />
+          <Tooltip content={`${minimapEnabled ? 'Hide' : 'Show'} minimap`}>
+            <button className={`icon-btn ${minimapEnabled ? 'active' : ''}`} onClick={() => setMinimapEnabled(!minimapEnabled)}><Map size={14} /></button>
           </Tooltip>
-
-          {/* Split editor */}
-          <Tooltip content={`${splitEditor ? 'Single' : 'Split'} editor pane`}>
-            <IconButton
-              icon={<Columns2 size={14} />}
-              label="Split editor"
-              active={splitEditor}
-              onClick={() => setSplitEditor(!splitEditor)}
-            />
+          <Tooltip content={`${splitEditor ? 'Single' : 'Split'} editor`}>
+            <button className={`icon-btn ${splitEditor ? 'active' : ''}`} onClick={() => setSplitEditor(!splitEditor)}><Columns2 size={14} /></button>
           </Tooltip>
-
-          <div className="w-px h-4 bg-zinc-700 mx-1" />
-
-          {/* Run tests */}
-          <Tooltip content="Run Tests (Ctrl+Enter)">
-            <IconButton icon={<Play size={14} />} label="Run Tests" className="text-green-400 hover:bg-green-500/10" />
-          </Tooltip>
-
-          {/* Generate all tests */}
-          <Tooltip content="Generate tests for all subprograms">
-            <IconButton
-              icon={<span className="text-[11px]">🧪</span>}
-              label="Generate All Tests"
+          <div className="ide-topbar-sep mx-1" />
+          <Tooltip content="Generate all tests">
+            <button className="icon-btn" style={{ color: 'var(--accent-success)' }}
               onClick={() => {
                 subprograms.forEach((s) => {
                   if (!useTestCaseStore.getState().currentTestSets[s.id]?.length) {
@@ -256,59 +224,45 @@ const EditorPage: React.FC = () => {
                   }
                 });
                 showToast(`Generating tests for ${subprograms.length} subprograms`, 'success');
-              }}
-            />
+              }}>
+              <Play size={14} />
+            </button>
           </Tooltip>
-
-          {/* Export report */}
           <div className="relative">
-            <Tooltip content="Export Report / Project">
-              <IconButton icon={<FileText size={14} />} label="Export" onClick={() => setReportOpen((v) => !v)} />
+            <Tooltip content="Export">
+              <button className="icon-btn" onClick={() => setReportOpen(v => !v)}><FileText size={14} /></button>
             </Tooltip>
             {reportOpen && (
-              <div
-                className="absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-xl overflow-hidden"
-                style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)', minWidth: 200 }}
-              >
+              <div className="float-panel" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, minWidth: 210, zIndex: 50 }}>
                 {[
                   { label: '📄 Export HTML Report', action: handleExportReport },
                   { label: '💾 Export Project (.json)', action: handleExportProject },
                 ].map((item) => (
-                  <button
-                    key={item.label}
+                  <button key={item.label}
                     onClick={() => { item.action(); setReportOpen(false); }}
-                    className="w-full text-left px-3 py-2 text-xs font-mono text-zinc-300 hover:bg-zinc-700/50 transition-colors"
-                  >
-                    {item.label}
-                  </button>
+                    className="w-full text-left px-3 py-2.5 text-xs font-mono transition-colors"
+                    style={{ color: 'var(--text-secondary)', background: 'transparent', display: 'block' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-hover)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'; }}
+                  >{item.label}</button>
                 ))}
               </div>
             )}
           </div>
-
-          {/* Keyboard shortcuts */}
-          <Tooltip content="Keyboard Shortcuts (?)">
-            <IconButton icon={<Keyboard size={14} />} label="Shortcuts" onClick={() => setShortcutsOpen(true)} />
+          <Tooltip content="Keyboard shortcuts (?)">
+            <button className="icon-btn" onClick={() => setShortcutsOpen(true)}><Keyboard size={14} /></button>
           </Tooltip>
-
-          {/* Toggle right panel */}
-          <Tooltip content="Toggle Right Panel (Ctrl+\\)">
-            <IconButton
-              icon={<Settings size={14} />}
-              label="Toggle panel"
-              onClick={toggleRightPanel}
-              active={!rightPanelCollapsed}
-            />
+          <Tooltip content="Toggle right panel (Ctrl+\\)">
+            <button className={`icon-btn ${!rightPanelCollapsed ? 'active' : ''}`} onClick={toggleRightPanel}><Settings size={14} /></button>
           </Tooltip>
-
-          {/* Back */}
+          <div className="ide-topbar-sep mx-1" />
           <Tooltip content="Back to Upload">
-            <IconButton icon={<ArrowLeft size={14} />} label="Back" onClick={() => navigate('/')} />
+            <button className="icon-btn" onClick={() => navigate('/')}><ArrowLeft size={14} /></button>
           </Tooltip>
         </div>
       </div>
 
-      {/* Main area */}
+      {/* ── Main area ────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <div className="flex-1 overflow-hidden">
@@ -326,12 +280,13 @@ const EditorPage: React.FC = () => {
           ) : (
             <div
               className="flex items-center justify-between px-3 border-t flex-shrink-0"
-              style={{ height: 28, borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
+              style={{ height: 26, borderColor: 'var(--border-default)', background: 'var(--bg-surface)', cursor: 'pointer' }}
+              onClick={toggleBottomPanel}
             >
-              <span className="text-[10px] font-mono text-zinc-600">DIAGNOSTICS</span>
-              <button onClick={toggleBottomPanel} className="text-zinc-600 hover:text-zinc-400">
-                <ChevronUp size={12} />
-              </button>
+              <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Diagnostics
+              </span>
+              <ChevronUp size={11} style={{ color: 'var(--text-muted)' }} />
             </div>
           )}
         </div>
@@ -341,27 +296,58 @@ const EditorPage: React.FC = () => {
         )}
 
         {!rightPanelCollapsed ? (
-          <div
-            style={{ width: rightPanel.size, flexShrink: 0, borderLeft: '1px solid var(--border-default)' }}
-            className="overflow-hidden"
-          >
+          <div style={{ width: rightPanel.size, flexShrink: 0, borderLeft: '1px solid var(--border-default)' }} className="overflow-hidden">
             <RightPanel />
           </div>
         ) : (
           <div
-            className="flex flex-col items-center py-2 gap-2 border-l flex-shrink-0"
-            style={{ width: 28, borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
+            className="flex flex-col items-center py-2 border-l flex-shrink-0"
+            style={{ width: 26, borderColor: 'var(--border-default)', background: 'var(--bg-surface)', cursor: 'pointer' }}
+            onClick={toggleRightPanel} title="Show panel"
           >
-            <button onClick={toggleRightPanel} className="text-zinc-600 hover:text-zinc-400">
-              <ChevronDown size={12} style={{ transform: 'rotate(-90deg)' }} />
-            </button>
+            <ChevronDown size={11} style={{ color: 'var(--text-muted)', transform: 'rotate(-90deg)' }} />
           </div>
         )}
       </div>
 
+      {/* ── Status bar ───────────────────────────────────────────────────────── */}
+      <StatusBar files={files} subprograms={subprograms} onToggleBottom={toggleBottomPanel} bottomCollapsed={bottomPanelCollapsed} />
+
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <OnboardingTour />
+    </div>
+  );
+};
+
+// ── Status Bar ────────────────────────────────────────────────────────────────
+import type { AdaFile } from '../types/file.types';
+import type { Subprogram } from '../types/subprogram.types';
+
+const StatusBar: React.FC<{
+  files: AdaFile[];
+  subprograms: Subprogram[];
+  onToggleBottom: () => void;
+  bottomCollapsed: boolean;
+}> = ({ files, subprograms, onToggleBottom }) => {
+  const { cursorPosition } = useEditorStore();
+  const { activeFileId } = useFileStore();
+  const { files: allFiles } = useFileStore();
+  const activeFile = allFiles.find(f => f.id === activeFileId);
+  const langLabel = activeFile?.name.endsWith('.ads') ? 'Ada Spec (.ads)' : activeFile ? 'Ada Body (.adb)' : 'Ada';
+
+  return (
+    <div className="status-bar">
+      <button className="status-item clickable" style={{ cursor: 'pointer', background: 'none', border: 'none' }} onClick={onToggleBottom}>
+        ⚡ Diagnostics
+      </button>
+      {activeFile && <span className="status-item">{activeFile.name}</span>}
+      <span className="status-item">Ln {cursorPosition.line}, Col {cursorPosition.col}</span>
+      <span className="status-item" style={{ marginLeft: 'auto' }}>
+        {subprograms.length} subprograms · {files.length} files
+      </span>
+      <span className="status-item">{langLabel}</span>
+      <span className="status-item">libadalang</span>
     </div>
   );
 };
