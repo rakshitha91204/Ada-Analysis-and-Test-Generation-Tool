@@ -29,6 +29,12 @@ var/
 wheels/
 *.whl
 
+# ── Junk / reference material — keep out of repo ─────────────────────────────
+email/
+check_*.py
+*.variables_report.json
+variables_report.json
+
 # Virtual environments
 venv/
 .venv/

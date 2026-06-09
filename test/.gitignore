@@ -1,0 +1,8 @@
+# Exclude pycache and nested git repos from test folder
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+make-with-ada/
+venv/
+*.json
