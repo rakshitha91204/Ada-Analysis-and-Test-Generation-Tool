@@ -235,11 +235,12 @@ export function useFileParser() {
           // ── Split combined result into per-file slices ─────────────────
           const perFile = splitAnalysisByFile(combinedResult);
 
-          // Store each file's slice under its own ID
+          // Store each file's slice + subprograms under its own ID
+          // BUT only make the CLICKED file's subprograms active in the store
           let clickedFileResult: AdaAnalysisResult | null = null;
+          const clickedFileSubs: Subprogram[] = [];
 
           for (const [baseName, slice] of perFile.entries()) {
-            // Find the AdaFile in the store whose name matches this basename
             const matchedFile = allFiles.find(f =>
               (f.name.split(/[/\\]/).pop() ?? f.name) === baseName
             );
@@ -249,25 +250,27 @@ export function useFileParser() {
             const finalSubs = subs.length > 0 ? subs : parseSubprograms(matchedFile.content, matchedFile.id);
 
             setResult(matchedFile.id, {
-              fileId:    matchedFile.id,
-              fileName:  matchedFile.name,
-              parsedAt:  new Date().toISOString(),
+              fileId:      matchedFile.id,
+              fileName:    matchedFile.name,
+              parsedAt:    new Date().toISOString(),
               subprograms: finalSubs,
-              analysis:  slice,
-              jsonText:  JSON.stringify(slice, null, 2),
+              analysis:    slice,
+              jsonText:    JSON.stringify(slice, null, 2),
             });
             syncToFile(matchedFile.id);
             updateFileStatus(matchedFile.id, 'parsed');
 
-            // Merge subprograms
-            const kept = subprogramsRef.current.filter(s => s.fileId !== matchedFile.id);
-            subprogramsRef.current = [...kept, ...finalSubs];
-            setSubprograms(subprogramsRef.current);
-
             if (matchedFile.id === file.id) {
               clickedFileResult = slice;
+              clickedFileSubs.push(...finalSubs);
             }
           }
+
+          // Only show subprograms for the clicked file in the explorer
+          // Replace all subprograms from this file, keep others from other files
+          const kept = subprogramsRef.current.filter(s => s.fileId !== file.id);
+          subprogramsRef.current = [...kept, ...clickedFileSubs];
+          setSubprograms(subprogramsRef.current);
 
           // If the clicked file had no subprograms (e.g. .ads spec), still mark it parsed
           if (!clickedFileResult) {

@@ -6,6 +6,7 @@ import {
 import { useFileStore } from '../../store/useFileStore';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useParseStore } from '../../store/useParseStore';
+import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { FileStatusBadge } from './FileStatusBadge';
 import { Badge } from '../shared/Badge';
 import { EmptyState } from '../shared/EmptyState';
@@ -18,20 +19,27 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
   const { activeFileId, setActiveFile, removeFile } = useFileStore();
   const { openTab, setActiveTab } = useEditorStore();
   const { results, syncToFile, clearResult } = useParseStore();
+  const { setSubprograms } = useSubprogramStore();
   const { parseFile } = useFileParser();
   const isActive = file.id === activeFileId;
   const isParsed = !!results[file.id];
   const isParsing = file.status === 'parsing';
   const isError = file.status === 'error';
 
-  // Click the file row → open in editor + parse if not already parsed
+  // Click the file row → open in editor, switch subprograms, parse if needed
   const handleClick = async () => {
     setActiveFile(file.id);
     openTab(file.id);
     setActiveTab('code');
     syncToFile(file.id);
 
-    // Only parse if not already parsed or currently parsing
+    // If already parsed, immediately show only this file's subprograms
+    if (isParsed && results[file.id]) {
+      const fileSubs = results[file.id].subprograms ?? [];
+      setSubprograms(fileSubs);
+    }
+
+    // Parse if not already parsed or currently parsing
     if (!isParsed && !isParsing) {
       try {
         await parseFile(file);
