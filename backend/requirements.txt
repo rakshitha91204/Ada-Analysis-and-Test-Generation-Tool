@@ -1,3 +1,23 @@
+# ── Ada Analysis Tool — Backend Dependencies ──────────────────────────────────
+# Author: Rakshitha
+#
+# IMPORTANT: libadalang is NOT installable via pip.
+# It is bundled with GNAT Studio's Python interpreter.
+#
+# To run the backend:
+#   1. Install GNAT Studio (free): https://github.com/AdaCore/gnatstudio/releases
+#   2. Run:  start_server.bat
+#      (This uses C:\GNATSTUDIO\share\gnatstudio\python\python.exe)
+#
+# The packages below are installed automatically by start_server.bat
+# using the GNAT Python interpreter.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# FastAPI web framework + ASGI server
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
+
+# ── Provided by GNAT Studio (do NOT pip install these) ────────────────────────
+# libadalang         — Ada AST parser (built into GNAT Python)
+# langkit            — libadalang dependency (built into GNAT Python)
