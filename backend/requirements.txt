@@ -1,23 +1,43 @@
 # ── Ada Analysis Tool — Backend Dependencies ──────────────────────────────────
 # Author: Rakshitha
 #
+# ─────────────────────────────────────────────────────────────────────────────
 # IMPORTANT: libadalang is NOT installable via pip.
-# It is bundled with GNAT Studio's Python interpreter.
+# Use ONE of the two methods below:
+# ─────────────────────────────────────────────────────────────────────────────
 #
-# To run the backend:
-#   1. Install GNAT Studio (free): https://github.com/AdaCore/gnatstudio/releases
-#   2. Run:  start_server.bat
-#      (This uses C:\GNATSTUDIO\share\gnatstudio\python\python.exe)
+# METHOD 1 — Windows (GNAT Studio):
+#   1. Install GNAT Studio (free):
+#      https://github.com/AdaCore/gnatstudio/releases
+#   2. Run:  backend\start_server.bat
+#      (auto-uses C:\GNATSTUDIO\share\gnatstudio\python\python.exe)
 #
-# The packages below are installed automatically by start_server.bat
-# using the GNAT Python interpreter.
+# METHOD 2 — Linux/Mac (Alire build):
+#   Requirements: Python 3.10, pip, Alire (https://alire.ada.dev/)
+#
+#   # Build libadalang once:
+#   alr get libadalang
+#   cd libadalang_*/
+#   LIBRARY_TYPE=relocatable alr build
+#
+#   # Every new terminal session:
+#   eval "$(alr printenv)"                      # loads libadalang .so
+#   cd /path/to/project/backend/
+#   python3.10 -m venv venv                     # first time only
+#   source venv/bin/activate
+#   pip install -r requirements.txt             # first time only
+#   bash start_server_linux.sh
+#
+#   # OR manually:
+#   python3 -m uvicorn server:app --host 0.0.0.0 --port 8001
+#
 # ─────────────────────────────────────────────────────────────────────────────
 
-# FastAPI web framework + ASGI server
+# FastAPI web framework + ASGI server (pip install these)
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 
-# ── Provided by GNAT Studio (do NOT pip install these) ────────────────────────
-# libadalang         — Ada AST parser (built into GNAT Python)
-# langkit            — libadalang dependency (built into GNAT Python)
+# ── Provided by GNAT Studio or Alire build (do NOT pip install) ───────────────
+# libadalang       — Ada semantic AST parser
+# langkit          — libadalang runtime dependency

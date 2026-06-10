@@ -1397,22 +1397,64 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
 
 # ── Dev entry point ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # ── Method 1: GNAT Studio (Windows) ──────────────────────────────────────
+    # libadalang is bundled with GNAT Studio's Python.
+    # Auto-relaunch with GNAT Python if libadalang not found.
     GNAT_PYTHON = r"C:\GNATSTUDIO\share\gnatstudio\python\python.exe"
     if not LIBADALANG_AVAILABLE and os.path.exists(GNAT_PYTHON) and sys.executable != GNAT_PYTHON:
         import subprocess
         print(f"[INFO] Re-launching with GNAT Python: {GNAT_PYTHON}")
         sys.exit(subprocess.run([GNAT_PYTHON] + sys.argv).returncode)
 
+    # ── Method 2: Alire + venv (Linux/Mac) ───────────────────────────────────
+    # libadalang built from source via:
+    #   alr get libadalang
+    #   LIBRARY_TYPE=relocatable alr build
+    #   eval "$(alr printenv)"
+    #   source venv/bin/activate
+    #   python3 server.py
+    # When using this method, LIBADALANG_AVAILABLE will already be True
+    # because the venv has the .so loaded via LD_LIBRARY_PATH from alr printenv.
+
+    if not LIBADALANG_AVAILABLE:
+        print()
+        print("=" * 60)
+        print("  libadalang NOT FOUND — backend will run in fallback mode")
+        print("=" * 60)
+        print()
+        print("  To enable full Ada analysis, use one of:")
+        print()
+        print("  [Windows] GNAT Studio method:")
+        print("    1. Install GNAT Studio from:")
+        print("       https://github.com/AdaCore/gnatstudio/releases")
+        print("    2. Run: start_server.bat")
+        print()
+        print("  [Linux/Mac] Alire method:")
+        print("    1. Install Alire: https://alire.ada.dev/")
+        print("    2. alr get libadalang")
+        print("    3. cd libadalang_*/")
+        print("    4. LIBRARY_TYPE=relocatable alr build")
+        print("    5. eval \"$(alr printenv)\"")
+        print("    6. cd <project>/backend")
+        print("    7. source venv/bin/activate   # venv with fastapi+uvicorn")
+        print("    8. python3 server.py")
+        print()
+        print("  The server will start anyway — /analyze returns 503 until")
+        print("  libadalang is available.")
+        print()
+
     try:
         import uvicorn
     except ImportError:
-        print(f"[ERROR] uvicorn not installed. Run: {sys.executable} -m pip install uvicorn")
+        print(f"[ERROR] uvicorn not installed.")
+        print(f"  Run: {sys.executable} -m pip install uvicorn")
         sys.exit(1)
 
     print("=" * 60)
     print(f"  Ada Analysis Tool API  v2.0.0")
     print(f"  Python    : {sys.version.split()[0]}")
-    print(f"  libadalang: {'available' if LIBADALANG_AVAILABLE else 'NOT FOUND'}")
+    print(f"  libadalang: {'available ✓' if LIBADALANG_AVAILABLE else 'NOT FOUND (fallback mode)'}")
+    print(f"  Port      : 8001")
     print(f"  Endpoints :")
     print(f"    GET  /health")
     print(f"    POST /analyze          (file upload - main IDE)")
