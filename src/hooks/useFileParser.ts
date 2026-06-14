@@ -302,11 +302,22 @@ export function useFileParser() {
 
       if (useBackend) {
         try {
-          // Send ALL Ada files together for cross-file type resolution
+          // Send ONLY the clicked .adb file + its matching .ads spec (if uploaded)
+          // This ensures accurate param types from the spec without parsing all other files.
+          // Cross-file type resolution still works because the spec is included.
+          const baseName = file.name.replace(/\.(adb|ads)$/, '');
+          const matchingSpec = baseName + '.ads';
+          const matchingBody = baseName + '.adb';
+
           const filesToSend = allFiles
-            .filter(f => f.content && (f.name.endsWith('.adb') || f.name.endsWith('.ads') || f.name.endsWith('.ada')))
+            .filter(f => f.content && (
+              f.name === file.name ||           // the clicked file itself
+              f.name === matchingSpec ||         // its matching .ads spec
+              f.name === matchingBody            // its matching .adb body (if clicked .ads somehow)
+            ))
             .map(f => ({ name: f.name, content: f.content }));
 
+          // Ensure the clicked file is always included
           if (!filesToSend.find(f => f.name === file.name)) {
             filesToSend.push({ name: file.name, content: file.content });
           }
@@ -314,10 +325,11 @@ export function useFileParser() {
           const combinedResult = await analyzeFiles(filesToSend);
 
           // ── Split combined result into per-file slices ─────────────────
+          // Only process slices for files we actually sent.
+          // This prevents accidentally overwriting results for other files.
+          const sentFileNames = new Set(filesToSend.map(f => f.name));
           const perFile = splitAnalysisByFile(combinedResult);
 
-          // Store each file's slice + subprograms under its own ID
-          // BUT only make the CLICKED file's subprograms active in the store
           let clickedFileResult: AdaAnalysisResult | null = null;
           const clickedFileSubs: Subprogram[] = [];
 
@@ -325,7 +337,8 @@ export function useFileParser() {
             const matchedFile = allFiles.find(f =>
               (f.name.split(/[/\\]/).pop() ?? f.name) === baseName
             );
-            if (!matchedFile) continue;
+            // Only store results for files we sent in this request
+            if (!matchedFile || !sentFileNames.has(matchedFile.name)) continue;
 
             const subs = backendSubprogramsToStore(slice, matchedFile.id, matchedFile.name);
             const finalSubs = subs.length > 0 ? subs : parseSubprograms(matchedFile.content, matchedFile.id);
