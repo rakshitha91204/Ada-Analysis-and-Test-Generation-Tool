@@ -8,6 +8,7 @@ import { GraphViewer } from '../graph/GraphViewer';
 import { Code2, TestTube, BarChart2, GitBranch, ChevronRight } from 'lucide-react';
 import { useParseStore } from '../../store/useParseStore';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
+import { useFileStore } from '../../store/useFileStore';
 
 const VIEW_TABS: { id: EditorTab; label: string; icon: React.ReactNode; shortcut: string }[] = [
   { id: 'code',     label: 'Code',       icon: <Code2 size={13} />,    shortcut: '⌥1' },
@@ -69,13 +70,20 @@ const CodeBreadcrumb: React.FC = () => {
   );
 };
 
-// ── Subprogram count badge ────────────────────────────────────────────────────
+// ── Subprogram count badge — shows count for ACTIVE file only ────────────────
 const SubpBadge: React.FC = () => {
-  const { subprograms } = useSubprogramStore();
-  if (subprograms.length === 0) return null;
+  const { results, activeResultFileId } = useParseStore();
+  const { activeFileId } = useFileStore();
+  const activeResult = activeResultFileId
+    ? results[activeResultFileId]
+    : activeFileId
+    ? results[activeFileId]
+    : null;
+  const count = activeResult?.subprograms?.length ?? 0;
+  if (count === 0) return null;
   return (
     <span className="inline-badge badge-muted" style={{ fontSize: 9, marginLeft: 4 }}>
-      {subprograms.length}
+      {count}
     </span>
   );
 };
