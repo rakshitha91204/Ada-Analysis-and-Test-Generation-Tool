@@ -849,7 +849,7 @@ const SkeletonCard: React.FC = () => (
 
 // ── Main TestCasePanel ────────────────────────────────────────────────────────
 export const TestCasePanel: React.FC = () => {
-  const { subprograms: storeSubprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
+  const { selectedSubprogramId, selectSubprogram } = useSubprogramStore();
 
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
@@ -868,18 +868,21 @@ export const TestCasePanel: React.FC = () => {
   // so previous files' subprograms never mix in
   const parseStoreSubprograms = activeResult?.subprograms ?? [];
 
-  // Use store subprograms if available (set by file click), else active result
-  const subprograms = storeSubprograms.length > 0 ? storeSubprograms : parseStoreSubprograms;
+  // Subprograms come ONLY from the active file's parse result.
+  // We never fall back to storeSubprograms here because the store
+  // may still hold a previous file's subprograms until the next
+  // setSubprograms call fires. Using activeResult directly ensures
+  // the list always matches exactly what the user clicked.
+  const subprograms = parseStoreSubprograms;
 
-  // Auto-clear selected subprogram when it belongs to a different file than active
+  // Auto-clear selected subprogram when switching files
+  // (when the selected ID no longer exists in the current file's subprograms)
   useEffect(() => {
-    if (selectedSubprogramId && storeSubprograms.length > 0) {
-      const stillPresent = storeSubprograms.some(s => s.id === selectedSubprogramId);
-      if (!stillPresent) {
-        selectSubprogram(null);
-      }
+    if (selectedSubprogramId && parseStoreSubprograms.length > 0) {
+      const stillPresent = parseStoreSubprograms.some(s => s.id === selectedSubprogramId);
+      if (!stillPresent) selectSubprogram(null);
     }
-  }, [storeSubprograms, selectedSubprogramId, selectSubprogram]);
+  }, [parseStoreSubprograms, selectedSubprogramId, selectSubprogram]);
 
   const selectedSub = subprograms.find(s => s.id === selectedSubprogramId);
 
