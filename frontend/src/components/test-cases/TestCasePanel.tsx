@@ -850,32 +850,36 @@ const SkeletonCard: React.FC = () => (
 // ── Main TestCasePanel ────────────────────────────────────────────────────────
 export const TestCasePanel: React.FC = () => {
   const { subprograms: storeSubprograms, selectedSubprogramId, selectSubprogram } = useSubprogramStore();
-  const { setSubprograms } = useSubprogramStore();
 
   const { results, activeResultFileId } = useParseStore();
   const { activeFileId } = useFileStore();
 
-  // Build subprograms from parse store when the subprogram store is empty
-  // This handles the case where the file was parsed but the store was cleared
-  const parseStoreSubprograms = useMemo(() => {
-    const subs: import('../../types/subprogram.types').Subprogram[] = [];
-    for (const result of Object.values(results)) {
-      if (result.subprograms?.length > 0) {
-        subs.push(...result.subprograms);
-      }
-    }
-    return subs;
-  }, [results]);
+  // Show only subprograms for the CURRENTLY ACTIVE file.
+  // When the user clicks a file, only that file's subprograms appear.
+  // Clicking another file replaces them with the new file's subprograms.
+  const activeResult = (() => {
+    if (activeResultFileId && results[activeResultFileId]) return results[activeResultFileId];
+    if (activeFileId && results[activeFileId]) return results[activeFileId];
+    const vals = Object.values(results);
+    return vals.length > 0 ? vals[vals.length - 1] : null;
+  })();
 
-  // Use store subprograms if available, otherwise fall back to parse store subprograms
+  // Subprograms come from the active file's parse result — NOT the whole store
+  // so previous files' subprograms never mix in
+  const parseStoreSubprograms = activeResult?.subprograms ?? [];
+
+  // Use store subprograms if available (set by file click), else active result
   const subprograms = storeSubprograms.length > 0 ? storeSubprograms : parseStoreSubprograms;
 
-  // If store is empty but parse store has data, sync them back into the store
+  // Auto-clear selected subprogram when it belongs to a different file than active
   useEffect(() => {
-    if (storeSubprograms.length === 0 && parseStoreSubprograms.length > 0) {
-      setSubprograms(parseStoreSubprograms);
+    if (selectedSubprogramId && storeSubprograms.length > 0) {
+      const stillPresent = storeSubprograms.some(s => s.id === selectedSubprogramId);
+      if (!stillPresent) {
+        selectSubprogram(null);
+      }
     }
-  }, [storeSubprograms.length, parseStoreSubprograms, setSubprograms]);
+  }, [storeSubprograms, selectedSubprogramId, selectSubprogram]);
 
   const selectedSub = subprograms.find(s => s.id === selectedSubprogramId);
 
@@ -894,7 +898,7 @@ export const TestCasePanel: React.FC = () => {
   })();
 
   // Resolve active analysis — find the result that actually contains this subprogram
-  const activeResult = (() => {
+  const activeAnalysisResult = (() => {
     if (activeResultFileId && results[activeResultFileId]) {
       const r = results[activeResultFileId];
       if (!resolvedSubpName || buildStudioSubprogram(resolvedSubpName, r.analysis)) return r;
@@ -935,7 +939,7 @@ export const TestCasePanel: React.FC = () => {
           ) : (
             <>
               {/* ── TEST STUDIO INPUTS — shown at top when subprogram selected ── */}
-              <TestStudioInputs subpName={resolvedSubpName} analysis={activeResult?.analysis ?? null} />
+              <TestStudioInputs subpName={resolvedSubpName} analysis={activeAnalysisResult?.analysis ?? null} />
             </>
           )}
         </div>
