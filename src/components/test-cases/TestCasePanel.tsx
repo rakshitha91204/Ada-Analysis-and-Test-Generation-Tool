@@ -271,7 +271,18 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       inPs.forEach(p => { init[p.name] = typeDefault(p.type); });
       setInputs(init);
       const exp: Record<string,string> = {};
-      outPs.forEach(p => { exp[p.name] = typeDefault(p.type); });
+      // Only pre-fill expected for simple scalar types we can simulate.
+      // Leave complex/unknown types (records, class-wide, access) empty
+      // so no assertion is made and the test doesn't fail incorrectly.
+      outPs.forEach(p => {
+        const c = typeConstraint(p.type);
+        if (c.kind !== 'unknown') {
+          // Known scalar type — pre-fill with a sensible default
+          exp[p.name] = typeDefault(p.type);
+        }
+        // Unknown/complex type (Bitmap_Buffer'Class, record types, etc.)
+        // → leave empty: user must fill manually if they want to assert
+      });
       setExpected(exp);
       setLastResult(null);
       setActiveTab(hasNoParams ? 'variables' : 'inputs');
@@ -606,22 +617,40 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
 
               {/* OUT PARAMETERS */}
               {outParams.length > 0 && <>
-                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>expected output values</div>
+                <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
+                  expected output values
+                  <span style={{ fontSize: 9, color: '#52525b', marginLeft: 8 }}>
+                    (leave blank for complex types — no assertion will be made)
+                  </span>
+                </div>
                 <div className="ts-input-grid" style={{ marginBottom: 12 }}>
-                  {outParams.map(p => (
-                    <div key={p.name} className="ts-input-card ts-input-card-out">
+                  {outParams.map(p => {
+                    const isComplex = p.constraint.kind === 'unknown';
+                    return (
+                    <div key={p.name} className="ts-input-card ts-input-card-out"
+                      style={isComplex ? { opacity: 0.75, borderColor: 'rgba(113,113,122,0.3)' } : {}}>
                       <div className="ts-input-header">
                         <span className="ts-input-dir out">out</span>
                         <span className="ts-input-name">{p.name}</span>
+                        {isComplex && (
+                          <span style={{ fontSize: 9, color: '#52525b', marginLeft: 4, fontStyle: 'italic' }}>optional</span>
+                        )}
                       </div>
                       <div className="ts-input-type ts-mono">{p.type} <CaseBadge type={p.type} /></div>
                       {typeLabel(p.type) && <div className="ts-input-range">{typeLabel(p.type)}</div>}
+                      {isComplex && (
+                        <div style={{ fontSize: 9, color: '#52525b', marginBottom: 4, fontStyle: 'italic' }}>
+                          Complex type — leave blank or enter expected value manually
+                        </div>
+                      )}
                       <input className="ts-input-field" type="text"
-                        value={expected[p.name]??typeDefault(p.type)}
+                        value={expected[p.name] ?? ''}
                         onChange={e => setExpected(ex => ({...ex,[p.name]:e.target.value}))}
-                        placeholder="expected value" />
+                        placeholder={isComplex ? 'leave blank (no assertion) or type expected' : 'expected value'}
+                      />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>}
 
@@ -710,9 +739,16 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                 color: lastResult.status === 'pass' ? '#4ade80' : lastResult.status === 'fail' ? '#f87171' : '#fbbf24' }}>
                 {lastResult.explanation
                   || (lastResult.status === 'pass'
-                    ? `✓ Test passed. Subprogram "${studioSubp.name}" executed successfully.`
+                    ? `✓ Test passed. Subprogram "${studioSubp.name}" executed successfully. All output assertions matched.`
                     : lastResult.status === 'fail'
-                    ? `✗ Test failed. Check your expected output values against the actual results.`
+                    ? (() => {
+                        // Check if the failure is due to a complex output type
+                        const complexOuts = outParams.filter(p => p.constraint.kind === 'unknown');
+                        if (complexOuts.length > 0 && Object.keys(lastResult.actual || {}).length > 0) {
+                          return `ℹ Note: Output parameter(s) ${complexOuts.map(p=>p.name).join(', ')} have complex Ada types (${complexOuts.map(p=>p.type).join(', ')}). The backend simulation uses integer arithmetic — results for non-integer types are not meaningful. Leave those expected fields blank to skip the assertion, or run the actual Ada program for correct output.`;
+                        }
+                        return `✗ Test failed. Check your expected output values against the actual results below.`;
+                      })()
                     : `⚠ Could not run test. The backend may not have "${studioSubp.name}" in its current session. Upload and parse the source file first.`)}
               </div>
 
