@@ -357,13 +357,23 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     const nextIdx = (strategyOrder.indexOf(strategy) + 1) % strategyOrder.length;
     autoFillStrategyRef.current = strategyOrder[nextIdx];
 
+    // Build param_types to send so backend can generate values even without session
+    const param_types: Record<string, string> = {};
+    studioSubp.params
+      .filter(p => p.dir === 'in' || p.dir === 'in out')
+      .forEach(p => { param_types[p.name] = p.type; });
+
     try {
-      // Try the backend API first
+      // Try the backend API first — send param_types so it works without session
       const res = await studioPost<{
         values: Record<string,string>;
         strategy: string;
         note?: string;
-      }>('/autofill', { subprogram: studioSubp.name, strategy });
+      }>('/autofill', {
+        subprogram: studioSubp.name,
+        strategy,
+        param_types,  // send so backend can fill even without session
+      });
 
       // Only use API values if non-empty (session has this subprogram)
       if (res.values && Object.keys(res.values).length > 0) {
@@ -374,7 +384,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       // Fall through to local
     }
 
-    // Local fallback — uses smartDefault with name+type hints
+    // Local fallback — uses smartDefault with name+type hints from parsed params
     const next: Record<string,string> = {};
     studioSubp.params
       .filter(p => p.dir === 'in' || p.dir === 'in out')

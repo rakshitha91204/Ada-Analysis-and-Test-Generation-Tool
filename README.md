@@ -1,517 +1,275 @@
 # Ada Analysis & Test Generation Tool
 
-**Author: Rakshitha**  
-**GitHub:** https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool  
+**Author: Rakshitha**
+**GitHub:** https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool
 **License:** MIT © 2025 Rakshitha
 
-A full-stack web IDE for **Ada source code static analysis and automatic test case generation**.
+A full-stack web IDE for **Ada source code static analysis and automatic test case generation** — powered by AdaCore's libadalang semantic AST library.
 
 | Layer | Stack |
 |---|---|
 | Frontend | React 18 · TypeScript · Monaco Editor · Vite 5 · Zustand · Tailwind CSS |
-| Backend | Python 3.13 · FastAPI · libadalang (AdaCore semantic AST) |
+| Backend | Python · FastAPI · **libadalang** (AdaCore semantic AST) |
 
-> **Works without the backend.** Upload any `.adb`/`.ads` file and the frontend falls back to a built-in TypeScript analyzer automatically.
+> **Works without the backend.** Upload any `.adb`/`.ads` file — the frontend automatically falls back to its built-in TypeScript analyzer if the backend isn't running.
 
 ---
 
-## Run the Project
+## Quick Start
 
-### Terminal 1 — Start the backend
+### Step 1 — Install libadalang (choose your OS)
 
-> **Requires GNAT Studio 2026** (includes Python 3.13 + libadalang).  
-> Download: https://github.com/AdaCore/gnatstudio/releases/latest
+> **libadalang cannot be installed with `pip install`.** Use one of these methods:
 
-Open a terminal and run these commands one at a time:
+#### Windows — GNAT Studio (easiest)
+1. Download **GNAT Studio** (free): https://github.com/AdaCore/gnatstudio/releases
+2. Install it — this bundles Python + libadalang automatically
+3. Done — `start_server.bat` uses it automatically
 
-**PowerShell:**
-```powershell
-cd D:\ada\backend
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+#### Linux/Mac — Alire build method
+```bash
+# Prerequisites: Python 3.10, pip, Alire
+# Install Alire from: https://alire.ada.dev/
+
+# 1. Build libadalang (one-time)
+alr get libadalang
+cd libadalang_26.0.0_*/
+LIBRARY_TYPE=relocatable alr build
+
+# 2. Create Python venv with FastAPI (one-time)
+cd /path/to/project/backend/
+python3.10 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Every new terminal — load libadalang environment FIRST
+cd libadalang_26.0.0_*/
+eval "$(alr printenv)"          # ← MUST do this every new terminal
+
+# 4. Start the server
+cd /path/to/project/backend/
+source venv/bin/activate
+bash start_server_linux.sh      # or: python3 -m uvicorn server:app --port 8001
 ```
 
-**Command Prompt (cmd):**
-```bat
-cd D:\ada\backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
+---
 
-**Or use the one-click script (opens its own window):**
+### Step 2 — Start the backend
+
+**Windows (one-click):**
 ```bat
 cd D:\ada\backend
 start_server.bat
+```
+
+**Windows (manual PowerShell):**
+```powershell
+cd D:\ada\backend
+& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001
+```
+
+**Linux/Mac (after Alire setup above):**
+```bash
+cd backend/
+bash start_server_linux.sh
 ```
 
 Backend runs at → **http://localhost:8001**
 
 ---
 
-### Terminal 2 — Start the frontend
+### Step 3 — Start the frontend
 
-Open a **second** terminal at the project root (`D:\ada`):
-
-**PowerShell or cmd:**
+Open a **second terminal** at the project root:
 ```bash
-cd D:\ada
+cd /path/to/project   # or D:\ada on Windows
 npm install
 npm run dev
 ```
 
 Frontend runs at → **http://localhost:5173**
 
-> If port 5173 is busy, Vite picks the next available port (e.g. 5174). Check the terminal output.
-
 ---
 
-### Verify both are running
+### Step 4 — Verify the connection
 
-```powershell
-Invoke-RestMethod http://localhost:8001/health
-```
-
-Expected response:
-```json
-{"status": "ok", "libadalang_available": true, "version": "2.0.0"}
+```bash
+# Check backend health
+curl http://localhost:8001/health
+# Expected: {"status":"ok","libadalang_available":true,"version":"2.0.0"}
 ```
 
 Then open **http://localhost:5173** in your browser.
+The status bar at the bottom shows `libadalang` when connected.
 
 ---
 
-## Table of Contents
+## How It Works
 
-1. [Project Structure](#project-structure)
-2. [Installation](#installation)
-3. [How It Works](#how-it-works)
-4. [Features](#features)
-5. [API Reference](#api-reference)
-6. [Backend Analyzer Modules](#backend-analyzer-modules)
-7. [Frontend Data Flow](#frontend-data-flow)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Tech Stack](#tech-stack)
-10. [Development](#development)
+1. **Upload** `.adb`/`.ads` Ada source files via drag & drop
+2. **Click a file** → it's parsed by libadalang on the backend
+3. Each file gets its own **JSON result** with full analysis
+4. The **subprogram list** shows only the clicked file's subprograms
+5. **Test Cases tab** → select a subprogram → auto-fill inputs → run test
+
+### Frontend ↔ Backend Connection
+
+| Frontend call | Vite proxy | Backend endpoint | Purpose |
+|---|---|---|---|
+| `GET /health` | `→ :8001/health` | `/health` | Check if libadalang available |
+| `POST /analyze` | `→ :8001/analyze` | `/analyze` | Upload files, get full analysis JSON |
+| `POST /api/autofill` | `→ :8001/api/autofill` | `/api/autofill` | Generate smart test inputs |
+| `POST /api/test/run` | `→ :8001/api/test/run` | `/api/test/run` | Run test with type validation |
+| `GET /api/subprograms` | `→ :8001/api/subprograms` | `/api/subprograms` | Get enriched subprogram list |
+| `GET /api/export` | `→ :8001/api/export` | `/api/export` | Export full report |
+
+---
+
+## Features
+
+### Static Analysis (libadalang-powered)
+| Feature | Details |
+|---|---|
+| **Subprogram Indexing** | Functions and procedures with parameters, return types, line numbers |
+| **Call Graph** | Cross-file call relationships, visualized with Graphviz |
+| **Cyclomatic Complexity** | Per-subprogram complexity score with color-coded bars |
+| **Dead Code Detection** | Unreferenced subprograms including transitive dead code |
+| **Variables Analysis** | Full type resolution — locals, globals, parameters, constants |
+| **Type Expansion** | Records expand to `{TypeName: {field: type}}` nested dicts |
+| **Control Flow** | if/elsif/case conditions with resolved variable types |
+| **Bug Detection** | Division by zero, null dereference, infinite loops, unreachable code, uninitialized variables |
+| **Loop Analysis** | Loop count per subprogram with type (for/while/loop) and nesting depth |
+| **Exception Analysis** | Exception handler count per subprogram |
+| **Concurrency** | Task bodies and protected objects |
+| **Performance Warnings** | Heavy function calls inside loops |
+| **Logical Errors** | Constant conditions (always true/false), division by zero |
+| **Test Harness Generation** | Ada test procedure templates per subprogram |
+| **Mock Stubs** | Mock/stub templates for callees |
+
+### Test Studio
+| Feature | Details |
+|---|---|
+| **Auto-fill** | Smart value generation using type constraints (min/max/kind) + name heuristics. Works with or without backend session by sending `param_types` |
+| **Type Validation** | Client-side + server-side Ada type checking before running tests |
+| **Test History** | Per-subprogram run history with pass/fail/error status |
+| **Multiple Strategies** | Normal → Edge → Boundary → Random (cycles on each auto-fill click) |
+| **Export** | Download test inputs as JSON |
+
+### IDE Features
+| Feature | Details |
+|---|---|
+| **Monaco Editor** | Ada syntax highlighting, code navigation |
+| **Per-file JSON** | Each file gets its own analysis JSON — no mixing |
+| **Per-file Subprograms** | Clicking a file shows only that file's subprograms |
+| **Code Navigation** | Click subprogram → jumps to line in editor |
+| **Status Bar** | Shows cursor position, file type, subprogram count, libadalang status |
+| **Call Graph Viewer** | Interactive pan/zoom Graphviz visualization |
+| **Diagnostics Panel** | Errors/warnings/info with click-to-navigate |
+| **Command Palette** | Ctrl+K for quick actions |
+| **Session Persistence** | Files restored from localStorage on reload |
 
 ---
 
 ## Project Structure
 
 ```
-ada-analysis-tool/
-│
-├── src/                          ← Frontend source (used by Vite)
-│   ├── components/
-│   │   ├── analysis/             ← AnalysisOutput (complexity, bugs, dead code)
-│   │   ├── diagnostics/          ← DiagnosticsPanel (errors, warnings, info)
-│   │   ├── editor/               ← Monaco editor, tabs, breadcrumbs, Ada syntax
-│   │   ├── file-manager/         ← File tree, JSON panel, package hierarchy
-│   │   ├── graph/                ← Graphviz call graph viewer
-│   │   ├── panels/               ← Resizable right/bottom panels
-│   │   ├── subprogram/           ← Outline explorer, context menu, parameters modal
-│   │   ├── test-cases/           ← TestCasePanel (embedded Test Studio inputs),
-│   │   │                           TestStudioPanel, cards, history, runner, heatmap
-│   │   ├── upload/               ← Dropzone, file/folder preview cards
-│   │   └── shared/               ← Badge, Button, Toast, Tooltip, CommandPalette
-│   ├── hooks/
-│   │   ├── useFileParser.ts      ← Triggers parse on file click; calls backend or fallback
-│   │   ├── useResizablePanel.ts
-│   │   └── useKeyboardShortcuts.ts
-│   ├── mocks/                    ← Demo data (used only when no real files loaded)
-│   ├── pages/
-│   │   ├── UploadPage.tsx        ← Drag & drop entry + Open Test Studio button
-│   │   ├── EditorPage.tsx        ← Full IDE layout
-│   │   └── TestStudioPage.tsx    ← Standalone Test Studio page (/test-studio)
-│   ├── store/                    ← Zustand stores
-│   ├── styles/
-│   │   └── TestStudio.css        ← Test Studio styles (light + .ts-dark overrides)
-│   ├── types/
-│   └── utils/
-│       ├── adaAnalyzer.ts        ← Client-side fallback analyzer
-│       ├── apiClient.ts          ← fetch wrapper (ROOT_URL for /health & /analyze,
-│       │                           BASE_URL /api for test studio endpoints)
-│       └── ...
-│
-├── frontend/                     ← Mirror copy of src/ (kept in sync)
-│
-├── backend/                      ← Python FastAPI analysis server
-│   ├── analyzer/                 ← 19 libadalang analyzer modules
-│   ├── generators/               ← harness_generator.py, mock_generator.py
+ada/
+├── backend/                      ← FastAPI Python backend
+│   ├── server.py                 ← Main API server (port 8001)
+│   ├── start_server.bat          ← Windows one-click start (GNAT Python)
+│   ├── start_server_linux.sh     ← Linux/Mac start (Alire venv)
+│   ├── requirements.txt          ← fastapi, uvicorn, multipart
+│   ├── analyzer/                 ← All libadalang analyzer modules
+│   │   ├── bug_detector.py       ← Division by zero, null deref, uninitialized vars
+│   │   ├── callgraph.py          ← Call graph builder
+│   │   ├── complexity.py         ← Cyclomatic complexity
+│   │   ├── concurrency.py        ← Tasks and protected objects
+│   │   ├── control_flow_extractor.py  ← If/case conditions + variable types
+│   │   ├── deadcode.py           ← Dead code with transitive analysis
+│   │   ├── exception_analysis.py ← Exception handler count
+│   │   ├── globals_analysis.py   ← Global read/write per subprogram
+│   │   ├── indexer.py            ← Subprogram index with is_function flag
+│   │   ├── logical_error.py      ← Constant conditions, float div-by-zero
+│   │   ├── loop_analysis.py      ← Loop count + details (type/line/depth)
+│   │   ├── performance.py        ← Heavy calls inside loops
+│   │   ├── protected_analysis.py ← Protected object detection
+│   │   ├── variables_analysis.py ← Full TypeRegistry + VariablesExtractor
+│   │   └── ...
+│   ├── generators/
+│   │   ├── harness_generator.py  ← Test harness templates
+│   │   └── mock_generator.py     ← Mock stub templates
 │   ├── utils/
-│   │   └── json_serializer.py
-│   ├── server.py                 ← FastAPI entry point — all 10 endpoints
-│   ├── runner.py                 ← CLI standalone runner (no server needed)
-│   ├── output_writer.py          ← Writes analysis_output.json to disk
-│   ├── requirements.txt          ← fastapi, uvicorn, python-multipart
-│   ├── start_server.bat          ← Windows one-click startup
-│   └── testada_caseinsensitive/  ← Sample Ada files for testing
+│   │   └── json_serializer.py    ← Make results JSON-serializable
+│   └── testada_caseinsensitive/  ← Test Ada files (bitmapped_drawing, math_utils)
 │
-├── correction/                   ← Reference implementation (integrated)
-├── index.html
-├── package.json
-├── vite.config.ts                ← Dev proxy: /api, /analyze, /health → localhost:8001
-├── tailwind.config.ts
-├── tsconfig.json
-└── README.md
+├── frontend/src/                 ← React TypeScript frontend
+│   ├── components/
+│   │   ├── analysis/AnalysisOutput.tsx      ← Complexity, bugs, dead code cards
+│   │   ├── diagnostics/DiagnosticsPanel.tsx ← Errors/warnings with line navigation
+│   │   ├── editor/EditorLayout.tsx          ← View tabs (Code/Tests/Analysis/Graph)
+│   │   ├── editor/EditorTabs.tsx            ← File tabs, per-file subprogram switch
+│   │   ├── file-manager/FileManager.tsx     ← File tree with parse-on-click
+│   │   ├── file-manager/ParsedJsonPanel.tsx ← Monaco JSON viewer per file
+│   │   ├── graph/GraphViewer.tsx            ← Graphviz call graph
+│   │   ├── test-cases/TestCasePanel.tsx     ← Test Studio with autofill
+│   │   └── ...
+│   ├── hooks/
+│   │   └── useFileParser.ts      ← Per-file parse + split analysis results
+│   ├── utils/
+│   │   ├── apiClient.ts          ← Backend API calls
+│   │   └── adaAnalyzer.ts        ← Client-side fallback analyzer
+│   └── store/                    ← Zustand stores (file, editor, parse, subprogram)
+│
+├── src/                          ← Mirror of frontend/src (keep in sync)
+├── test/                         ← Development test files + backend mirror
+└── vite.config.ts                ← Proxy: /api → :8001, /analyze → :8001
 ```
-
----
-
-## Installation
-
-### Frontend
-
-| Requirement | Version |
-|---|---|
-| Node.js | 18+ |
-| npm | 9+ |
-
-```bash
-# Install dependencies (run once from project root)
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
-
-### Backend
-
-`libadalang` is **not on PyPI** — it ships exclusively with GNAT Studio.
-
-**Step 1 — Install GNAT Studio 2026 (Windows x64)**
-
-Download from:
-```
-https://github.com/AdaCore/gnatstudio/releases/latest
-```
-
-Run the `.exe` installer — installs to `C:\GNATSTUDIO\` by default.
-
-**Step 2 — Verify libadalang is available**
-
-**PowerShell:**
-```powershell
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -c "import libadalang; print('libadalang OK')"
-```
-
-**cmd:**
-```bat
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -c "import libadalang; print('libadalang OK')"
-```
-
-Expected: `libadalang OK`
-
-**Step 3 — Install Python dependencies**
-
-**PowerShell:**
-```powershell
-cd D:\ada\backend
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9
-```
-
-**cmd:**
-```bat
-cd D:\ada\backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9
-```
-
-**Step 4 — Start the server**
-
-**PowerShell:**
-```powershell
-cd D:\ada\backend
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**cmd:**
-```bat
-cd D:\ada\backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
----
-
-## How It Works
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      Browser (React)                          │
-│                                                               │
-│  1. Upload .adb / .ads files via drag & drop                  │
-│                                                               │
-│  2. Click a file in the Files panel                           │
-│         │                                                     │
-│         ▼                                                     │
-│  useFileParser hook                                           │
-│         │                                                     │
-│         ├── Backend available? ──YES──► POST /analyze         │
-│         │                                      │              │
-│         │                              libadalang (18 modules)│
-│         │                                      │              │
-│         │                              AdaAnalysisResult JSON │
-│         │                                      │              │
-│         └── Backend unavailable? ──► adaAnalyzer.ts (regex)   │
-│                                               │               │
-│                                               ▼               │
-│                                   useParseStore (Zustand)     │
-│                                               │               │
-│              ┌────────────────────────────────┤               │
-│              ▼                ▼               ▼               │
-│        GraphViewer    DiagnosticsPanel  AnalysisOutput        │
-│        (call_graph)   (bug_report,      (complexity,          │
-│                        dead_code,        dead_code,           │
-│                        logical_errors)   concurrency)         │
-│                                                               │
-│  3. Test Cases tab → TestStudioInputs shows real params       │
-│         → editable input fields with type labels              │
-│         → run test / auto-fill / export inputs                │
-│         → variables tab, history tab                          │
-│                                                               │
-│  4. Export HTML report or project JSON                        │
-└──────────────────────────────────────────────────────────────┘
-                        │
-          Vite proxy (/analyze, /health, /api/*)
-                        │
-                        ▼
-┌──────────────────────────────────────────────────────────────┐
-│              FastAPI Backend  http://localhost:8001            │
-│                                                               │
-│  POST /analyze          (file upload — multipart/form-data)   │
-│  POST /api/analyze      (path-based — JSON body)              │
-│  GET  /health                                                 │
-│  GET  /api/files                                              │
-│  GET  /api/file                                               │
-│  GET  /api/subprograms  (enriched with type constraints)      │
-│  POST /api/test/run     (type-validated simulation)           │
-│  GET  /api/test/results                                       │
-│  POST /api/test/clear                                         │
-│  GET  /api/export                                             │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Features
-
-### Upload Page
-- Drag & drop `.adb` / `.ads` files or entire folders
-- **Open Test Studio** button — goes directly to the Test Studio page
-- Session persistence — files survive page refresh via `localStorage`
-
-### Editor — Test Cases tab
-- **Test Studio inputs embedded at the top** when a subprogram is selected:
-  - `inputs` tab — editable parameter cards with type labels (UINT16 CAPS, uint16 lower, UInt16 orig), range hints (0..65535), run test / auto-fill / export buttons
-  - `variables` tab — full variable table with declared type, normalized type, scope, constraint
-  - `history` tab — every test run with timestamp, pass/fail/error, inputs
-  - Result box — pass/fail/error with actual vs expected values and type violations
-- Auto-generated test cases (normal, edge, invalid, boundary) shown below
-- Drag-to-reorder test cards, export as JSON / .adb / CSV
-
-### Test Studio (standalone at `/test-studio`)
-- Enter any Ada project path → click Analyze
-- Subprogram list with dead code badges and test status dots
-- Same input/variables/history UI as the embedded version
-- Results sidebar, export report button
-
-### Static Analysis — 18 libadalang modules
-
-| Field | Module | Frontend |
-|---|---|---|
-| `subprogram_index` | SubprogramIndexer | SubprogramExplorer |
-| `call_graph` | CallGraphBuilder | GraphViewer |
-| `cyclomatic_complexity` | ComplexityAnalyzer | AnalysisOutput |
-| `dead_code` | DeadCodeDetector | AnalysisOutput, DiagnosticsPanel |
-| `variables_info` | VariablesAnalyzer | ParsedJsonPanel, AnalysisOutput |
-| `global_read_write` | GlobalRWDetector | AnalysisOutput |
-| `control_flow_extractor` | ControlFlowExtractor | AnalysisOutput |
-| `loop_info` | LoopAnalyzer | AnalysisOutput |
-| `exceptions_info` | ExceptionAnalyzer | AnalysisOutput |
-| `concurrency_info` | ConcurrencyAnalyzer | AnalysisOutput |
-| `protected_objects` | ProtectedAccessDetector | AnalysisOutput |
-| `logical_errors` | LogicalErrorDetector | DiagnosticsPanel |
-| `bug_report` | BugDetector | DiagnosticsPanel, AnalysisOutput |
-| `performance_warnings` | PerformanceAnalyzer | DiagnosticsPanel |
-| `test_harness_data` | TestHarnessGenerator | TestCasePanel |
-| `mock_stub_data` | MockStubGenerator | ParsedJsonPanel |
-| `ast_info` | Parser | ParsedJsonPanel |
 
 ---
 
 ## API Reference
 
-### `GET /health`
-
-```json
-{
-  "status": "ok",
-  "libadalang_available": true,
-  "version": "2.0.0",
-  "analyzed": true,
-  "files": 2,
-  "subprograms": 4
-}
-```
-
-### `POST /analyze` — file upload
-
-**Request:** `multipart/form-data`, field `files`, one or more `.adb`/`.ads`/`.ada` files
-
+### `POST /analyze`
+Upload Ada files and get full analysis JSON.
 ```bash
 curl -X POST http://localhost:8001/analyze \
-  -F "files=@my_package.adb" \
-  -F "files=@my_package.ads"
+  -F "files=@myfile.adb" \
+  -F "files=@myfile.ads"
 ```
+Returns: Full `AdaAnalysisResult` JSON with per-file keys normalized to basename.
 
-**Error responses:**
-
-| Status | Meaning |
-|---|---|
-| `400` | File is not `.adb` / `.ads` / `.ada` |
-| `503` | libadalang not installed |
-| `500` | Analysis pipeline error |
-
-### `POST /api/analyze` — path-based (Test Studio)
-
+### `GET /health`
 ```bash
-curl -X POST http://localhost:8001/api/analyze \
-  -H "Content-Type: application/json" \
-  -d "{\"path\": \"C:\\\\path\\\\to\\\\ada\\\\project\"}"
+curl http://localhost:8001/health
+# {"status":"ok","libadalang_available":true,"version":"2.0.0"}
 ```
 
-**Response:**
+### `POST /api/autofill`
+Generate smart test values. Works even without backend session when `param_types` is sent.
 ```json
-{"ok": true, "file_count": 2, "subprogram_count": 4, "error": null}
-```
-
-### `GET /api/subprograms`
-
-```json
-[
-  {
-    "name": "Check_Pixel",
-    "file_name": "bitmapped_drawing.adb",
-    "start_line": 30,
-    "end_line": 88,
-    "complexity": 5,
-    "is_dead": true,
-    "params": [
-      {"name": "Orida_In",  "dir": "in",  "type": "UINT16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
-      {"name": "Aran_In",   "dir": "in",  "type": "uint16", "constraint": {"kind": "integer", "min": 0, "max": 65535}},
-      {"name": "Karan_Out", "dir": "out", "type": "UInt16", "constraint": {"kind": "integer", "min": 0, "max": 65535}}
-    ],
-    "variables": [...],
-    "calls": []
-  }
-]
+{
+  "subprogram": "Add",
+  "strategy": "normal",
+  "param_types": {"A": "Integer", "B": "Integer"}
+}
 ```
 
 ### `POST /api/test/run`
-
-```bash
-curl -X POST http://localhost:8001/api/test/run \
-  -H "Content-Type: application/json" \
-  -d "{\"subprogram\": \"Check_Pixel\", \"inputs\": {\"Orida_In\": \"100\", \"Aran_In\": \"50\"}, \"expected\": {\"Karan_Out\": \"150\"}}"
-```
-
-**Response — pass:**
-```json
-{"status": "pass", "message": "All assertions passed", "actual": {"Karan_Out": "150"}, "elapsed_ms": 0.02}
-```
-
-**Response — type violation:**
+Run a test with type validation.
 ```json
 {
-  "status": "error",
-  "message": "Type constraint violation",
-  "violations": [
-    {"variable": "Orida_In", "type": "UINT16", "value": "99999", "error": "Value 99999 out of range [0 .. 65535]"}
-  ],
-  "actual": {}
+  "subprogram": "Add",
+  "inputs": {"A": "5", "B": "3"},
+  "expected": {"Result": "8"},
+  "param_types": {"A": "Integer", "B": "Integer"}
 }
 ```
 
-### Other endpoints
+### `GET /api/subprograms`
+Get all subprograms enriched with variables, params, type constraints.
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/files` | GET | List all Ada files from last analysis |
-| `/api/file?path=...` | GET | Get raw source of one file |
-| `/api/test/results` | GET | All test results for this session |
-| `/api/test/clear` | POST | Reset all test results |
-| `/api/export` | GET | Export full analysis + test results as JSON |
-
----
-
-## Backend Analyzer Modules
-
-All 18 modules run on every `POST /analyze` call:
-
-| Module | Class | Output field |
-|---|---|---|
-| `project_loader.py` | `ProjectLoader` | — (loads libadalang units) |
-| `indexer.py` | `SubprogramIndexer` | `subprogram_index` |
-| `parser.py` | `Parser` | `ast_info` |
-| `callgraph.py` | `CallGraphBuilder` | `call_graph` |
-| `deadcode.py` | `DeadCodeDetector` | `dead_code` |
-| `complexity.py` | `ComplexityAnalyzer` | `cyclomatic_complexity` |
-| `control_flow_extractor.py` | `ControlFlowExtractor` | `control_flow_extractor` |
-| `loop_analysis.py` | `LoopAnalyzer` | `loop_info` |
-| `variables_analysis.py` | `VariablesAnalyzer` | `variables_info` |
-| `globals_analysis.py` | `GlobalRWDetector` | `global_read_write` |
-| `exception_analysis.py` | `ExceptionAnalyzer` | `exceptions_info` |
-| `concurrency.py` | `ConcurrencyAnalyzer` | `concurrency_info` |
-| `protected_analysis.py` | `ProtectedAccessDetector` | `protected_objects` |
-| `logical_error.py` | `LogicalErrorDetector` | `logical_errors` |
-| `bug_detector.py` | `BugDetector` | `bug_report` |
-| `performance.py` | `PerformanceAnalyzer` | `performance_warnings` |
-| `harness_generator.py` | `TestHarnessGenerator` | `test_harness_data` |
-| `mock_generator.py` | `MockStubGenerator` | `mock_stub_data` |
-
----
-
-## Frontend Data Flow
-
-```
-Click file in Files panel
-        │
-        ▼
-useFileParser.parseFile(file)
-        │
-        ├── POST /analyze  ──► backend returns AdaAnalysisResult
-        │         │
-        │         └── backendSubprogramsToStore()
-        │               converts subprogram_index → Subprogram[]
-        │
-        └── fallback: adaAnalyzer.ts (regex-based, same schema)
-                │
-                ▼
-        useParseStore.setResult(fileId, { analysis, jsonText, subprograms })
-                │
-        ┌───────┼────────────────────────────────────┐
-        ▼       ▼                ▼                   ▼
-  GraphViewer  DiagnosticsPanel  AnalysisOutput  TestCasePanel
-  call_graph   bug_report        complexity      TestStudioInputs
-               logical_errors    dead_code       (real params from
-               dead_code         concurrency      /api/subprograms)
-```
-
-**URL routing in `apiClient.ts`:**
-
-| Function | URL | Vite proxy → Backend |
-|---|---|---|
-| `checkHealth()` | `GET /health` | → `GET /health` |
-| `analyzeFiles()` | `POST /analyze` | → `POST /analyze` (FormData) |
-| `analyzeByPath()` | `POST /api/analyze` | → `POST /api/analyze` (JSON) |
-| `getFiles()` | `GET /api/files` | → `GET /api/files` |
-| `getSubprograms()` | `GET /api/subprograms` | → `GET /api/subprograms` |
-| `runTest()` | `POST /api/test/run` | → `POST /api/test/run` |
-| `getTestResults()` | `GET /api/test/results` | → `GET /api/test/results` |
-| `clearTestResults()` | `POST /api/test/clear` | → `POST /api/test/clear` |
-| `getExportUrl()` | `GET /api/export` | → `GET /api/export` |
+### `GET /api/export`
+Export full analysis + test results as JSON.
 
 ---
 
@@ -519,126 +277,61 @@ useFileParser.parseFile(file)
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+K` | Command Palette |
-| `Ctrl+Shift+T` | Switch to Test Cases tab |
-| `Ctrl+Shift+G` | Switch to Call Graph tab |
-| `Ctrl+Shift+P` | Focus subprogram search |
-| `Ctrl+E` | Export current tests as JSON |
-| `Ctrl+H` | Find & Replace in editor |
+| `Ctrl+K` | Command palette |
 | `Ctrl+M` | Toggle minimap |
-| `Ctrl++` / `Ctrl+-` | Increase / decrease font size |
 | `Ctrl+\` | Toggle right panel |
-| `Ctrl+`` ` `` | Toggle bottom panel |
-| `?` | Keyboard shortcuts modal |
-| `Esc` | Close modal / context menu |
+| `Ctrl++` / `Ctrl+-` | Increase/decrease font size |
+| `Alt+1..4` | Switch editor view (Code/Tests/Analysis/Graph) |
 
 ---
 
 ## Tech Stack
 
-### Frontend
-
-| Technology | Version | Purpose |
-|---|---|---|
-| React | 18 | UI framework |
-| TypeScript | 5.3 | Type safety |
-| Vite | 5 | Build tool + dev proxy |
-| Monaco Editor | 0.47 | Code editor with Ada syntax |
-| Zustand | 4.5 | State management |
-| `@hpcc-js/wasm` | 2.13 | Graphviz DOT rendering |
-| react-dropzone | 14 | File upload |
-| Tailwind CSS | 3.4 | Styling |
-| Lucide React | 0.344 | Icons |
-| date-fns | 3.3 | Date formatting |
-
 ### Backend
+- **Python** (3.10+ via venv, or GNAT Python on Windows)
+- **FastAPI** 0.111 + **Uvicorn** 0.29 — async API server
+- **libadalang** — AdaCore's semantic Ada AST parser (bundled with GNAT Studio or built via Alire)
+- **TypeRegistry** — recursive record/array/enum type expansion
 
-| Technology | Version | Purpose |
-|---|---|---|
-| Python | 3.13 | Runtime (bundled with GNAT Studio) |
-| FastAPI | 0.111 | REST API framework |
-| uvicorn | 0.29 | ASGI server |
-| libadalang | 26.0 | Ada semantic AST analysis |
-| python-multipart | 0.0.9 | File upload parsing |
+### Frontend
+- **React 18** + **TypeScript**
+- **Monaco Editor** — VS Code's editor with Ada syntax
+- **Vite 5** — dev server with proxy to backend
+- **Zustand** — state management (file, editor, parse, subprogram stores)
+- **Tailwind CSS** — utility styling
+- **@hpcc-js/wasm** — Graphviz WebAssembly for call graph rendering
+- **Lucide React** — icons
 
 ---
 
-## Development
+## Development Notes
 
-### Run both servers (copy-paste ready)
-
-**Terminal 1 — Backend (PowerShell):**
-
-```powershell
-cd D:\ada\backend
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**Terminal 1 — Backend (cmd):**
-
-```bat
-cd D:\ada\backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" -m uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**Terminal 2 — Frontend (PowerShell or cmd):**
-
+### Running after `git clone`
 ```bash
-cd D:\ada
+# 1. Clone
+git clone https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool.git
+cd Ada-Analysis-and-Test-Generation-Tool
+
+# 2. Install frontend deps
+npm install
+
+# 3. Start frontend
 npm run dev
+
+# 4. Start backend (Windows)
+cd backend
+start_server.bat
+
+# 4. Start backend (Linux/Mac — see Alire setup above first)
+cd backend
+bash start_server_linux.sh
 ```
 
-### npm scripts
+### The `src/` and `frontend/src/` directories
+Both contain the same React source. `frontend/src/` is the one Vite builds from. `src/` is a mirror kept in sync. If you edit one, copy to the other.
 
-```bash
-npm run dev      # Dev server  →  http://localhost:5173
-npm run build    # Production build  →  dist/
-npm run preview  # Preview build  →  http://localhost:4173
-```
-
-### Run the CLI analyzer (no server needed)
-
-**PowerShell:**
-```powershell
-cd D:\ada\backend
-& "C:\GNATSTUDIO\share\gnatstudio\python\python.exe" runner.py
-```
-
-**cmd:**
-```bat
-cd D:\ada\backend
-"C:\GNATSTUDIO\share\gnatstudio\python\python.exe" runner.py
-```
-
-Output is written to `analysis_output.json`.  
-To analyze your own files, edit the `path` variable in `runner.py`:
-
-```python
-# Default:
-path = Path(__file__).parent / "testada_caseinsensitive"
-
-# Change to your project:
-path = Path("C:/your/ada/project")
-```
-
-### Environment variables (production)
-
-| Variable | Default | Description |
-|---|---|---|
-| `VITE_API_ROOT_URL` | `""` | Base URL for `/health` and `/analyze` |
-| `VITE_API_BASE_URL` | `/api` | Base URL for all `/api/*` endpoints |
-
-Create a `.env` file at the project root:
-
-```env
-VITE_API_ROOT_URL=https://your-backend.example.com
-VITE_API_BASE_URL=https://your-backend.example.com/api
-```
-
----
-
-## Repository
-
-**GitHub:** https://github.com/rakshitha91204/Ada-Analysis-and-Test-Generation-Tool  
-**Author:** Rakshitha  
-**License:** MIT © 2025 Rakshitha
+### Backend runs on port 8001, frontend on port 5173
+Vite proxies these routes to the backend:
+- `/health` → `http://localhost:8001/health`
+- `/analyze` → `http://localhost:8001/analyze`
+- `/api/*` → `http://localhost:8001/api/*`

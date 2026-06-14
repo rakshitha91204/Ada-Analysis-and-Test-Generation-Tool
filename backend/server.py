@@ -850,6 +850,9 @@ async def api_autofill(request: Request):
 
     subp_name = (body.get("subprogram") or "").strip()
     strategy  = (body.get("strategy") or "normal").strip()  # normal | edge | boundary | random
+    # param_types: {param_name: type_str} — sent by frontend so we can
+    # generate smart values even when subprogram isn't in backend session
+    param_types_from_client: dict = body.get("param_types", {})
 
     subp = _get_subprogram_from_session(subp_name)
     if not subp:
@@ -858,6 +861,24 @@ async def api_autofill(request: Request):
             if s["name"].lower() == subp_name.lower():
                 subp = s
                 break
+
+    # If still not found but client sent param_types, build a synthetic subp
+    if not subp and param_types_from_client:
+        subp = {
+            "name": subp_name,
+            "params": [
+                {
+                    "name":            pname,
+                    "dir":             "in",
+                    "type":            ptype,
+                    "type_normalized": ptype.lower(),
+                    "constraint":      _type_constraint(ptype),
+                }
+                for pname, ptype in param_types_from_client.items()
+            ],
+            "variables": [],
+        }
+
     if not subp:
         # Return smart defaults based on name hints even without session data
         return JSONResponse({
@@ -866,7 +887,7 @@ async def api_autofill(request: Request):
             "values": {},
             "all_strategies": {"normal": {}, "edge": {}, "boundary": {}, "random": {}},
             "params": [],
-            "note": f"Subprogram '{subp_name}' not found in session. Upload and parse the file first.",
+            "note": f"Subprogram '{subp_name}' not found. Upload and parse the file first, or send param_types.",
         })
 
     import random
