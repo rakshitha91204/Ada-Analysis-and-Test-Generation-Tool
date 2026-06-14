@@ -459,23 +459,40 @@ export const ParsedJsonPanel: React.FC = () => {
             </div>
           )}
 
-          {/* Spec-only info — shown when .ads file has no variables/control flow data */}
-          {!isStaleJson && activeResult && (() => {
+          {/* Spec-only warning — .ads file clicked, no JSON generated */}
+          {(() => {
             try {
               const d = JSON.parse(activeResult.jsonText);
-              const fp = d.file_paths?.[0] ?? '';
-              const isSpecOnly = fp.endsWith('.ads');
-              const hasVars = (d.variables_info?.[fp]?.locals?.length ?? 0) > 0 ||
-                              (d.variables_info?.[fp]?.locals?.length ?? -1) > -1;
-              const hasCF = Object.keys(d.control_flow_extractor?.[fp] ?? {}).length > 0;
-              if (isSpecOnly && !hasCF) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              if ((activeResult.analysis as any)?._is_spec_only || d._warning) {
+                const bodyName = activeResult.fileName.replace('.ads', '.adb');
                 return (
-                  <div
-                    className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0 text-[10px] font-mono"
-                    style={{ background: 'rgba(96,165,250,0.06)', borderBottom: '1px solid rgba(96,165,250,0.15)', color: '#93c5fd' }}
-                  >
-                    <span style={{ fontSize: 11 }}>ℹ</span>
-                    <span>Spec file (.ads) — upload the matching .adb body file too for variables &amp; control flow data</span>
+                  <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
+                    <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                      <span style={{ fontSize: 28 }}>📋</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-mono font-semibold" style={{ color: '#f59e0b' }}>
+                        Spec file (.ads) — No JSON generated
+                      </p>
+                      <p className="text-xs font-mono mt-2" style={{ color: '#71717a', maxWidth: 340, lineHeight: 1.6 }}>
+                        <strong style={{ color: '#a0a0a0' }}>{activeResult.fileName}</strong> is a specification file.
+                        It only declares function/procedure signatures — no implementation or variables.
+                      </p>
+                      <p className="text-xs font-mono mt-2" style={{ color: '#71717a', maxWidth: 340, lineHeight: 1.6 }}>
+                        JSON analysis is generated for <strong style={{ color: '#4ade80' }}>.adb body files</strong> only.
+                        Upload and click <strong style={{ color: '#4ade80' }}>{bodyName}</strong> to get the full analysis JSON.
+                      </p>
+                    </div>
+                    <div className="px-3 py-2 rounded-lg text-xs font-mono text-left"
+                      style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', color: '#a0a0a0', maxWidth: 360 }}>
+                      <span style={{ color: '#f59e0b' }}>Tip:</span> When you upload both{' '}
+                      <code style={{ color: '#4ade80' }}>{activeResult.fileName}</code> and{' '}
+                      <code style={{ color: '#4ade80' }}>{bodyName}</code> together,
+                      the params from the spec are automatically merged into the body&apos;s analysis — giving you accurate
+                      parameter types in the test inputs.
+                    </div>
                   </div>
                 );
               }
@@ -494,7 +511,12 @@ export const ParsedJsonPanel: React.FC = () => {
             </div>
           )}
 
-          {/* Monaco JSON editor */}
+          {/* Monaco JSON editor — hidden for spec files */}
+          {(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const isSpec = (activeResult.analysis as any)?._is_spec_only;
+            if (isSpec) return null;
+            return (
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={
               <div className="flex items-center justify-center h-full">
@@ -525,8 +547,10 @@ export const ParsedJsonPanel: React.FC = () => {
               />
             </Suspense>
           </div>
-
-          {/* Generate Tests button */}
+          );
+          })()}
+          {/* Generate Tests button — only for .adb files */}
+          {!((activeResult.analysis as unknown as Record<string,unknown>)?._is_spec_only) && (
           <div
             className="flex-shrink-0 p-3"
             style={{ borderTop: '1px solid #1c1c1c' }}
@@ -596,6 +620,7 @@ export const ParsedJsonPanel: React.FC = () => {
               Edit the JSON above before generating · changes are preserved
             </p>
           </div>
+          )}
         </>
       )}
     </div>

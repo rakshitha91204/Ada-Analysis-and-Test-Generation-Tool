@@ -40,23 +40,70 @@ async function isBackendAvailable(): Promise<boolean> {
 
 /**
  * Split a combined multi-file analysis result into one slice per file.
- * Each slice contains only the data for that specific file, while
- * still showing the full call graph (cross-file calls are useful context).
+ * - .adb body files get a full JSON slice
+ * - .ads spec subprogram declarations are MERGED INTO their matching .adb slice
+ *   so parameter types from the spec are visible in the body's analysis
+ * - Standalone .ads files (no matching .adb) are skipped — they get a warning instead
  */
 function splitAnalysisByFile(
   combined: AdaAnalysisResult
 ): Map<string, AdaAnalysisResult> {
   const results = new Map<string, AdaAnalysisResult>();
 
+  // Build a map of basename → subprogram entries for spec files
+  // so we can enrich .adb entries with spec-declared params
+  const specSubpsByBase = new Map<string, typeof combined.subprogram_index[string]>();
+  for (const fp of (combined.file_paths ?? [])) {
+    const baseName = fp.split(/[/\\]/).pop() ?? fp;
+    if (!baseName.endsWith('.ads')) continue;
+    const specSubps = combined.subprogram_index?.[fp] ?? combined.subprogram_index?.[baseName] ?? [];
+    if (specSubps.length > 0) {
+      specSubpsByBase.set(baseName, specSubps);
+    }
+  }
+
   for (const fp of (combined.file_paths ?? [])) {
     const baseName = fp.split(/[/\\]/).pop() ?? fp;
 
-    // Subprograms for just this file
-    const subpIndex = combined.subprogram_index?.[fp]
+    // Only generate JSON slices for .adb body files
+    // .ads files are handled separately (warning shown, no JSON)
+    if (baseName.endsWith('.ads')) continue;
+
+    // Subprograms for just this .adb file
+    let subpIndex = combined.subprogram_index?.[fp]
       ?? combined.subprogram_index?.[baseName]
       ?? [];
 
-    // Skip if no subprograms and no variables (e.g. empty .ads spec files)
+    // Merge in spec declarations: if the matching .ads has richer param info,
+    // use it to enrich the .adb subprogram entries
+    const matchingSpec = baseName.replace(/\.adb$/, '.ads');
+    const specSubps = specSubpsByBase.get(matchingSpec);
+    if (specSubps && specSubps.length > 0) {
+      subpIndex = subpIndex.map(bodySubp => {
+        const specMatch = specSubps.find(
+          s => s.name.toLowerCase() === bodySubp.name.toLowerCase()
+        );
+        if (specMatch && specMatch.parameters.length > 0 && bodySubp.parameters.length === 0) {
+          // Body has no params listed but spec does — use spec's params
+          return { ...bodySubp, parameters: specMatch.parameters };
+        }
+        if (specMatch && specMatch.return_type && !bodySubp.return_type) {
+          return { ...bodySubp, return_type: specMatch.return_type, is_function: true };
+        }
+        return bodySubp;
+      });
+      // Also add any spec-only declarations not in the body index
+      for (const specSubp of specSubps) {
+        const alreadyInBody = subpIndex.some(
+          s => s.name.toLowerCase() === specSubp.name.toLowerCase()
+        );
+        if (!alreadyInBody) {
+          subpIndex = [...subpIndex, { ...specSubp }];
+        }
+      }
+    }
+
+    // Skip empty .adb files (no subprograms, no variables)
     const hasVars = !!(combined.variables_info?.[fp] ?? combined.variables_info?.[baseName]);
     if (subpIndex.length === 0 && !hasVars) continue;
 
@@ -213,6 +260,40 @@ export function useFileParser() {
   const parseFile = useCallback(async (file: AdaFile) => {
     if (parsingIds.current.has(file.id)) return;
     parsingIds.current.add(file.id);
+
+    // ── Rule 1: .ads spec files do NOT get JSON generated ────────────────
+    // A spec file (.ads) only declares signatures — it has no implementation.
+    // JSON analysis (variables, control flow, types) only makes sense for .adb body files.
+    // When clicking .ads, we mark it as parsed but show a warning instead of JSON.
+    if (file.name.endsWith('.ads')) {
+      updateFileStatus(file.id, 'parsed');
+      // Store a minimal result with the warning flag so the panel can show it
+      const baseName = file.name;
+      setResult(file.id, {
+        fileId:      file.id,
+        fileName:    file.name,
+        parsedAt:    new Date().toISOString(),
+        subprograms: [],
+        analysis: {
+          file_paths: [baseName],
+          ast_info: { [baseName]: 'CompilationUnit' },
+          subprogram_index: { [baseName]: [] },
+          call_graph: {},
+          cyclomatic_complexity: {},
+          dead_code: [],
+          variables_info: { [baseName]: { global_variables: {}, global_constants: {}, local_variables: {} } },
+          control_flow_extractor: { [baseName]: {} },
+          global_read_write: { [baseName]: { read: [], write: [] } },
+          // Special flag so ParsedJsonPanel shows the warning
+          _is_spec_only: true,
+          _spec_warning: `"${file.name}" is a specification file (.ads). JSON analysis is only generated for body files (.adb). Upload the matching "${file.name.replace('.ads', '.adb')}" body file and click it to get full analysis.`,
+        } as AdaAnalysisResult & { _is_spec_only: boolean; _spec_warning: string },
+        jsonText: JSON.stringify({ _warning: `Spec file (.ads) — click the matching .adb body file for full analysis. Upload "${file.name.replace('.ads', '.adb')}" to get JSON.` }, null, 2),
+      });
+      syncToFile(file.id);
+      parsingIds.current.delete(file.id);
+      return;
+    }
 
     updateFileStatus(file.id, 'parsing');
 
