@@ -88,6 +88,15 @@ const SubRow: React.FC<{
         if (!isActive) (e.currentTarget as HTMLDivElement).style.background = isCursor ? 'rgba(250,204,21,0.05)' : 'transparent';
       }}
     >
+      {/* Kind icon — ƒ for function, ⚡ for procedure */}
+      <span
+        className="flex-shrink-0 text-[11px] font-mono w-3 text-center"
+        style={{ color: sub.kind === 'function' ? '#fb923c' : '#facc15', opacity: 0.85 }}
+        title={sub.kind === 'function' ? `function — returns ${sub.returnType || 'value'}` : 'procedure'}
+      >
+        {sub.kind === 'function' ? 'ƒ' : '⚡'}
+      </span>
+
       {/* Complexity dot */}
       <span
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
