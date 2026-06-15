@@ -13,7 +13,7 @@ export interface ToastMessage {
 let toastListeners: Array<(toasts: ToastMessage[]) => void> = [];
 let toastList: ToastMessage[] = [];
 
-export function showToast(message: string, type: ToastType = 'info') {
+export function showToast(message: string, type: ToastType = 'info', duration = 3500) {
   const id = crypto.randomUUID();
   toastList = [...toastList, { id, type, message }];
   toastListeners.forEach((l) => l([...toastList]));
@@ -21,7 +21,7 @@ export function showToast(message: string, type: ToastType = 'info') {
   setTimeout(() => {
     toastList = toastList.filter((t) => t.id !== id);
     toastListeners.forEach((l) => l([...toastList]));
-  }, 3000);
+  }, duration);
 }
 
 const icons: Record<ToastType, React.ReactNode> = {
@@ -59,7 +59,7 @@ export const Toast: React.FC = () => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`toast-enter flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-zinc-900 border ${borderColors[toast.type]} shadow-xl pointer-events-auto max-w-xs`}
+          className={`toast-enter flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-zinc-900 border ${borderColors[toast.type]} shadow-xl pointer-events-auto max-w-sm`}
         >
           {icons[toast.type]}
           <span className="text-xs text-zinc-200 flex-1">{toast.message}</span>

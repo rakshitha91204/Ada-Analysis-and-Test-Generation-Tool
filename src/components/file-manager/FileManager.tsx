@@ -26,14 +26,25 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
   const isParsing = file.status === 'parsing';
   const isError = file.status === 'error';
   const isAdb = file.name.endsWith('.adb');
+  const isAds = file.name.endsWith('.ads');
 
   // Click the file row → open in editor ONLY (no auto-parse)
-  // Parsing happens ONLY via the Analyse button (⬛ icon)
+  // For .ads files: open in editor + show info toast that only .adb can be analysed
   const handleClick = () => {
     setActiveFile(file.id);
     openTab(file.id);
     setActiveTab('code');
     syncToFile(file.id);
+
+    // .ads spec files: show informational popup — analysis only runs on .adb body files
+    if (isAds) {
+      showToast(
+        `"${file.name}" is a spec file (.ads) — only .adb body files can be analysed.`,
+        'info',
+        5000
+      );
+      return;
+    }
 
     // If already parsed, show this file's subprograms immediately
     if (isParsed && results[file.id]) {
@@ -119,7 +130,7 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
       }`}
       style={indent ? { paddingLeft: 28 } : {}}
     >
-      {/* Analyse button — for .adb files, always visible left of filename */}
+      {/* Analyse button — for .adb files only */}
       {isAdb && (
         <button
           onClick={handleAnalyse}
@@ -147,6 +158,22 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
             ? <Loader size={9} className="animate-spin" />
             : <BarChart2 size={9} />}
         </button>
+      )}
+
+      {/* .ads spec files — show info indicator instead of analyse button */}
+      {isAds && (
+        <span
+          title="Specification file (.ads) — analysis only runs on .adb body files"
+          className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded text-[9px] font-mono font-bold select-none"
+          style={{
+            background: 'rgba(113,113,122,0.12)',
+            border: '1px solid rgba(113,113,122,0.2)',
+            color: '#52525b',
+            cursor: 'default',
+          }}
+        >
+          S
+        </span>
       )}
 
       {/* File icon */}
