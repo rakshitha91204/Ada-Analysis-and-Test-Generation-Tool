@@ -74,17 +74,21 @@ interface TestRunResult {
 
 // ── Build StudioSubprogram from local analysis result (no extra API call) ─────
 function typeConstraint(type: string): TypeConstraint {
-  const tl = (type||'').toLowerCase().trim();
-  if (tl.includes('uint16'))   return { kind:'integer', min:0, max:65535 };
-  if (tl.includes('uint32'))   return { kind:'integer', min:0, max:4294967295 };
-  if (tl.includes('uint8'))    return { kind:'integer', min:0, max:255 };
-  if (tl.includes('positive')) return { kind:'integer', min:1, max:2147483647 };
-  if (tl.includes('natural'))  return { kind:'integer', min:0, max:2147483647 };
-  if (tl.includes('integer'))  return { kind:'integer', min:-2147483648, max:2147483647 };
-  if (tl.includes('float'))    return { kind:'float', min:-1e38, max:1e38 };
-  if (tl.includes('boolean'))  return { kind:'boolean', values:['True','False'] };
-  if (tl.includes('character'))return { kind:'character' };
-  if (tl.includes('string'))   return { kind:'string' };
+  const tl = (type||'').toLowerCase().trim()
+    .replace(/[''']/g, "'")   // normalise apostrophes
+    .replace(/\s+/g, ' ');
+  if (tl.includes('uint32') || tl.includes('word'))  return { kind:'integer', min:0, max:4294967295 };
+  if (tl.includes('uint16'))                          return { kind:'integer', min:0, max:65535 };
+  if (tl.includes('uint8')  || tl.includes('byte'))  return { kind:'integer', min:0, max:255 };
+  if (tl.includes('positive'))                        return { kind:'integer', min:1, max:2147483647 };
+  if (tl.includes('natural'))                         return { kind:'integer', min:0, max:2147483647 };
+  if (tl.includes('long_integer'))                    return { kind:'integer', min:-2147483648, max:2147483647 };
+  if (tl.includes('integer'))                         return { kind:'integer', min:-2147483648, max:2147483647 };
+  if (tl.includes('long_float') || tl.includes('double')) return { kind:'float', min:-1e38, max:1e38 };
+  if (tl.includes('float'))                           return { kind:'float', min:-1e38, max:1e38 };
+  if (tl.includes('boolean'))                         return { kind:'boolean', values:['True','False'] };
+  if (tl === 'character' || tl.startsWith('character ')) return { kind:'character' };
+  if (tl.includes('string'))                          return { kind:'string' };
   return { kind:'unknown' };
 }
 
@@ -208,26 +212,66 @@ function buildStudioSubprogram(
 }
 
 // ── Test Studio helpers ───────────────────────────────────────────────────────
-function typeDefault(type: string): string {
+
+/** Smart default value for a given Ada type + param name combination */
+function typeDefault(type: string, paramName = ''): string {
   const tl = (type||'').toLowerCase();
+  const pl = (paramName||'').toLowerCase();
   if (tl.includes('bool'))      return 'False';
-  if (tl.includes('float'))     return '0.0';
-  if (tl.includes('character')) return "'A'";
+  if (tl.includes('float') || tl.includes('double')) return '0.0';
+  if (tl === 'character' || tl.startsWith('character ')) return "'A'";
   if (tl.includes('string'))    return '"Hello"';
+  // integers — pick a mid-range safe default
+  if (tl.includes('uint32') || tl.includes('word'))  return '100';
+  if (tl.includes('uint16'))                          return '100';
+  if (tl.includes('uint8') || tl.includes('byte'))   return '10';
+  if (tl.includes('positive'))                        return '1';
+  if (tl.includes('natural'))                         return '0';
+  if (tl.includes('integer'))                         return '0';
+  // Ada-specific complex types — infer from type name + param name
+  if (tl.includes("bitmap_buffer") || tl.includes("buffer'class") || pl.includes('buffer') || pl.includes('buf'))
+    return 'Buffer';
+  if (tl.includes('bitmap_color') || (tl.includes('color') && !tl.includes('mode')))
+    return '(Red => 255, Green => 0, Blue => 0, Alpha => 255)';
+  if (tl.includes('color_mode'))  return 'ARGB_8888';
+  if (tl.includes('bmp_font') || tl.includes('font'))  return 'Default_Font';
+  if (tl.includes('point') || pl === 'start' || pl === 'pos' || pl.includes('origin'))
+    return '(X => 0, Y => 0)';
+  if (tl.includes('bitmap') || pl.includes('bitmap'))   return 'Buffer';
+  if (pl.includes('char'))     return "'A'";
+  if (pl.includes('msg') || pl.includes('str') || pl.includes('text')) return '"Hello"';
+  if (pl.includes('width') || pl.includes('w'))   return '10';
+  if (pl.includes('height') || pl.includes('h'))  return '10';
+  if (pl.includes('row'))      return '1';
+  if (pl.includes('col'))      return '1';
+  if (pl.includes('x'))        return '0';
+  if (pl.includes('y'))        return '0';
+  if (pl.includes('count') || pl.includes('num') || pl.includes('len')) return '1';
+  if (pl.includes('index') || pl.includes('idx'))  return '1';
+  if (pl.includes('offset'))   return '0';
+  if (pl.includes('size'))     return '1';
+  if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok')) return 'False';
+  if (pl.includes('orida') || pl.includes('aran') || pl.includes('karan')) return '0';
   return '0';
 }
+
 function typeLabel(type: string): string {
   const tl = (type||'').toLowerCase();
+  if (tl.includes('uint32') || tl.includes('word'))  return '0 .. 4294967295';
   if (tl.includes('uint16'))   return '0 .. 65535';
-  if (tl.includes('uint32'))   return '0 .. 4294967295';
-  if (tl.includes('uint8'))    return '0 .. 255';
+  if (tl.includes('uint8') || tl.includes('byte'))   return '0 .. 255';
   if (tl.includes('positive')) return '1 .. 2147483647';
   if (tl.includes('natural'))  return '0 .. 2147483647';
   if (tl.includes('integer'))  return '-2147483648 .. 2147483647';
-  if (tl.includes('float'))    return 'float';
+  if (tl.includes('float') || tl.includes('double')) return 'float';
   if (tl.includes('bool'))     return 'True | False';
-  if (tl.includes('character'))return "format: 'A'";
+  if (tl === 'character' || tl.startsWith('character ')) return "format: 'A'";
   if (tl.includes('string'))   return 'format: "text"';
+  if (tl.includes('point'))    return '(X => 0, Y => 0)';
+  if (tl.includes('bitmap_color')) return '(Red,Green,Blue,Alpha => 0..255)';
+  if (tl.includes('color_mode'))   return 'ARGB_8888 | RGB_888 | ...';
+  if (tl.includes('bmp_font') || tl.includes('font')) return 'Default_Font | font name';
+  if (tl.includes('bitmap_buffer') || tl.includes("buffer'class")) return 'Buffer object (in out)';
   return '';
 }
 function CaseBadge({ type }: { type: string }) {
@@ -315,26 +359,28 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       setStudioSubp(found);
       const inPs = found.params.filter(p => p.dir === 'in' || p.dir === 'in out');
       const outPs = found.params.filter(p => p.dir === 'out' || p.dir === 'in out');
-      const hasNoParams = inPs.length === 0 && outPs.length === 0;
+
+      // Pre-fill inputs for ALL in/in-out params — including complex/unknown types
       const init: Record<string,string> = {};
-      inPs.forEach(p => { init[p.name] = typeDefault(p.type); });
+      inPs.forEach(p => {
+        init[p.name] = typeDefault(p.type, p.name);
+      });
       setInputs(init);
+
+      // Pre-fill expected for out params (scalar types only — leave complex blank)
       const exp: Record<string,string> = {};
-      // Only pre-fill expected for simple scalar types we can simulate.
-      // Leave complex/unknown types (records, class-wide, access) empty
-      // so no assertion is made and the test doesn't fail incorrectly.
       outPs.forEach(p => {
         const c = typeConstraint(p.type);
         if (c.kind !== 'unknown') {
-          // Known scalar type — pre-fill with a sensible default
-          exp[p.name] = typeDefault(p.type);
+          exp[p.name] = typeDefault(p.type, p.name);
         }
-        // Unknown/complex type (Bitmap_Buffer'Class, record types, etc.)
-        // → leave empty: user must fill manually if they want to assert
+        // Unknown/complex type → leave empty (no assertion forced)
       });
       setExpected(exp);
       setLastResult(null);
-      setActiveTab(hasNoParams ? 'variables' : 'inputs');
+      // Show inputs tab if there are any in params; variables tab if only out/no params
+      const hasInputs = inPs.length > 0 || found.params.length === 0;
+      setActiveTab(hasInputs ? 'inputs' : 'variables');
     };
 
     // 1. Try local parse store (fastest — no network)
@@ -358,14 +404,21 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       return;
     }
 
-    // 2. Fallback: API only
+    // 2. Fallback: build a minimal stub from just the subprogram name
+    // so the panel always shows something rather than "no parameter info found"
+    const stubSubp: StudioSubprogram = {
+      name: subpName, file: '', file_name: '',
+      start_line: null, end_line: null, return_type: null,
+      params: [], variables: [], complexity: null, is_dead: false, calls: [],
+    };
+
+    // Try API
     studioGet<StudioSubprogram[]>('/subprograms').then(list => {
       const found = list.find(s =>
         s.name === subpName || s.name.toLowerCase() === subpName.toLowerCase()
       );
-      if (found) applySubp(found);
-      else setStudioSubp(null);
-    });
+      applySubp(found ?? stubSubp);
+    }).catch(() => applySubp(stubSubp));
   }, [subpName, analysis]); // eslint-disable-line
 
   // Persist a run result — saves to localStorage (6-day TTL) + the global store
@@ -421,22 +474,47 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       if (strategy === 'edge') return "' '";
       return "'" + 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random()*52)] + "'";
     }
-    if (c.kind === 'string')   return strategy === 'edge' ? '""' : '"Hello"';
+    if (c.kind === 'string') {
+      const strings = ['"Hello"', '"Ada"', '"Test"', '"World"', '""'];
+      if (strategy === 'edge')   return '""';
+      if (strategy === 'random') return strings[Math.floor(Math.random() * strings.length)];
+      return '"Hello"';
+    }
 
-    // Unknown type — use name/type hints (same logic as backend)
-    if (tl.includes('font')    || pl.includes('font'))    return 'Default_Font';
-    if (tl.includes('buffer')  || pl.includes('buffer') || pl.includes('buf')) return 'Default_Buffer';
-    if (tl.includes('color')   || pl.includes('color'))   return '0';
-    if (tl.includes('point')   || pl === 'start' || pl === 'pos' || pl.includes('position')) return '(0, 0)';
-    if (tl.includes('bitmap')  || pl.includes('bitmap'))  return 'Default_Bitmap';
-    if (pl.includes('width')   || pl.includes('height'))  return '1';
-    if (pl.includes('size')    || pl.includes('length'))  return '1';
-    if (pl.includes('index')   || pl.includes('idx'))     return '1';
-    if (pl.includes('count')   || pl.includes('num'))     return '1';
-    if (pl.includes('offset'))                            return '0';
-    if (pl.includes('char')    || tl.includes('char'))    return "'A'";
-    if (pl.includes('str')     || tl.includes('string'))  return '"Hello"';
-    return '0';
+    // Unknown/complex Ada types — infer from type name + parameter name
+    if (tl.includes("bitmap_buffer") || tl.includes("buffer'class") || pl.includes('buffer') || pl.includes('buf'))
+      return 'Buffer';
+    if (tl.includes('bitmap_color') || (tl.includes('color') && !tl.includes('mode')))
+      return strategy === 'edge'
+        ? '(Red => 0, Green => 0, Blue => 0, Alpha => 0)'
+        : '(Red => 255, Green => 0, Blue => 0, Alpha => 255)';
+    if (tl.includes('color_mode'))  return 'ARGB_8888';
+    if (tl.includes('bmp_font') || tl.includes('font') || pl.includes('font'))
+      return 'Default_Font';
+    if (tl.includes('point') || pl === 'start' || pl === 'pos' || pl.includes('origin'))
+      return strategy === 'edge' ? '(X => 0, Y => 0)' : `(X => ${Math.floor(Math.random()*100)}, Y => ${Math.floor(Math.random()*100)})`;
+    if (tl.includes('bitmap') || pl.includes('bitmap'))   return 'Buffer';
+    if (pl.includes('msg') || pl.includes('str') || pl.includes('text'))
+      return strategy === 'edge' ? '""' : '"Hello"';
+    if (pl.includes('char'))     return strategy === 'edge' ? "' '" : "'A'";
+    if (pl.includes('width') || pl.includes('w'))   return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
+    if (pl.includes('height') || pl.includes('h'))  return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
+    if (pl.includes('row'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*10));
+    if (pl.includes('col'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*10));
+    if (pl.includes('x'))     return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
+    if (pl.includes('y'))     return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
+    if (pl.includes('count') || pl.includes('num') || pl.includes('len')) return strategy === 'edge' ? '0' : '5';
+    if (pl.includes('index') || pl.includes('idx'))  return strategy === 'edge' ? '1' : String(1 + Math.floor(Math.random()*10));
+    if (pl.includes('offset'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*50));
+    if (pl.includes('size'))     return strategy === 'edge' ? '0' : '10';
+    if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok'))
+      return strategy === 'edge' ? 'False' : (Math.random() > 0.5 ? 'True' : 'False');
+    // UINT16/UINT32 range names from bitmapped_drawing
+    if (pl.includes('orida') || pl.includes('aran') || pl.includes('karan'))
+      return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*256));
+    if (pl.includes('foreground') || pl.includes('background') || pl.includes('fg') || pl.includes('bg'))
+      return strategy === 'edge' ? '0' : String(Math.floor(Math.random() * 0xFFFFFF));
+    return strategy === 'edge' ? '0' : '1';
   };
 
   const autoGen = async () => {
@@ -482,6 +560,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       });
     setInputs(next);
   };
+
+  // Auto-generate test cases for ALL params, even unknown types — called on first load
+  const generateInitialInputs = useCallback((subp: StudioSubprogram) => {
+    const inPs = subp.params.filter(p => p.dir === 'in' || p.dir === 'in out');
+    if (inPs.length === 0) return;
+    const next: Record<string,string> = {};
+    inPs.forEach(p => { next[p.name] = typeDefault(p.type, p.name); });
+    setInputs(next);
+  }, []);
 
   const runTest = async () => {
     if (!studioSubp) return;
@@ -682,9 +769,9 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                           </select>
                         : <input className="ts-input-field"
                             type={p.constraint.kind==='integer'?'number':'text'}
-                            value={inputs[p.name]??typeDefault(p.type)}
+                            value={inputs[p.name]??typeDefault(p.type, p.name)}
                             onChange={e => setInputs(i => ({...i,[p.name]:e.target.value}))}
-                            placeholder={p.constraint.kind==='character' ? "'A'" : p.constraint.kind==='string' ? '"text"' : undefined}
+                            placeholder={p.constraint.kind==='character' ? "'A'" : p.constraint.kind==='string' ? '"text"' : p.constraint.kind==='unknown' ? typeDefault(p.type, p.name) : undefined}
                             min={p.constraint.min} max={p.constraint.max} />}
                     </div>
                   ))}
@@ -745,7 +832,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
                       {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
                       <input className="ts-input-field ts-mono"
-                        value={typeDefault(v.type)}
+                        value={typeDefault(v.type, v.name)}
                         readOnly
                         style={{ opacity: 0.6, cursor: 'default', background: 'transparent' }}
                         title="Local variable — default initial value shown" />
@@ -768,7 +855,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       </div>
                       <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
                       <input className="ts-input-field ts-mono"
-                        value={typeDefault(v.type)}
+                        value={typeDefault(v.type, v.name)}
                         readOnly
                         style={{ opacity: 0.7, cursor: 'default', borderColor: 'rgba(245,158,11,0.3)' }}
                         title="Constant — value is fixed at declaration" />
