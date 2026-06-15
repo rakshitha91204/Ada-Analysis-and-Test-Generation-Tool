@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   AlertTriangle, Code2, BarChart2, ChevronRight, Clock,
-  Bug, Zap, Shield, RefreshCw, Activity, Database,
+  Zap, Shield, Activity, RefreshCw, Database,
 } from 'lucide-react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useParseStore } from '../../store/useParseStore';
@@ -41,13 +41,6 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
   // ── Dead code — only keep string entries ──────────────────────────────────
   const rawDeadCode = analysis?.dead_code ?? [];
   const deadCode: string[] = rawDeadCode.filter((x: unknown) => typeof x === 'string') as string[];
-
-  // ── Bug report ─────────────────────────────────────────────────────────────
-  const bugReport = analysis?.bug_report;
-  const divByZero = bugReport?.division_by_zero ?? [];
-  const nullDeref = bugReport?.null_dereference ?? [];
-  const infiniteLoops = bugReport?.infinite_loops ?? [];
-  const unreachable = bugReport?.unreachable_code ?? [];
 
   // ── Logical errors ─────────────────────────────────────────────────────────
   const logicalErrors: string[] = analysis?.logical_errors ?? [];
@@ -165,24 +158,37 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
       {(() => {
         // Build subprogram list from the active file's analysis data (most accurate)
         const subpIndex = analysis?.subprogram_index ?? {};
-        const allSubps = Object.values(subpIndex).flat();
+        // Flatten all entries from all file keys
+        const allSubps = Object.values(subpIndex).flat() as Array<{
+          name: string;
+          return_type: string | null;
+          is_function: boolean;
+          start_line: number;
+          end_line: number;
+          parameters: string[];
+        }>;
         const fileName = analysis?.file_paths?.[0] ?? activeResult?.fileName ?? '';
-        const functions  = allSubps.filter(s => s.is_function || !!s.return_type);
-        const procedures = allSubps.filter(s => !s.is_function && !s.return_type);
-        const deadSet    = new Set(analysis?.dead_code ?? []);
+        const deadSet  = new Set<string>(analysis?.dead_code ?? []);
 
-        if (allSubps.length === 0 && !hasBackendData) return null;
+        // Determine functions vs procedures:
+        // A subprogram is a function if is_function=true OR has a non-null return_type
+        const dispFunctions  = allSubps.filter(s => s.is_function === true || (s.return_type != null && s.return_type !== ''));
+        const dispProcedures = allSubps.filter(s => !(s.is_function === true || (s.return_type != null && s.return_type !== '')));
 
-        const displaySubps = hasBackendData ? allSubps : subprograms.map(s => ({
+        // Fallback to subprogram store when no backend data
+        const fallbackSubps = subprograms.map(s => ({
           name: s.name,
           return_type: s.returnType ?? null,
           is_function: s.kind === 'function',
-          start_line: s.startLine,
-          end_line: s.endLine,
+          start_line: s.startLine ?? 0,
+          end_line: s.endLine ?? 0,
           parameters: [],
         }));
-        const dispFunctions  = displaySubps.filter(s => s.is_function || !!s.return_type);
-        const dispProcedures = displaySubps.filter(s => !s.is_function && !s.return_type);
+        const displaySubps   = allSubps.length > 0 ? allSubps : fallbackSubps;
+        const displayFuncs   = displaySubps.filter(s => s.is_function === true || (s.return_type != null && s.return_type !== ''));
+        const displayProcs   = displaySubps.filter(s => !(s.is_function === true || (s.return_type != null && s.return_type !== '')));
+
+        if (displaySubps.length === 0 && !hasBackendData) return null;
 
         return (
           <div className={cardClass} style={{ ...cardStyle, borderColor: 'rgba(167,139,250,0.2)' }}>
@@ -207,12 +213,12 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
             {/* Totals grid */}
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
-                { label: 'Total',      value: displaySubps.length,    color: '#e4e4e7', bg: 'rgba(255,255,255,0.05)' },
-                { label: 'Functions',  value: dispFunctions.length,   color: '#fb923c', bg: 'rgba(251,146,60,0.08)' },
-                { label: 'Procedures', value: dispProcedures.length,  color: '#facc15', bg: 'rgba(250,204,21,0.08)' },
+                { label: 'Total',      value: displaySubps.length,  color: '#e4e4e7', bg: 'rgba(255,255,255,0.05)' },
+                { label: 'Functions',  value: displayFuncs.length,  color: '#fb923c', bg: 'rgba(251,146,60,0.08)' },
+                { label: 'Procedures', value: displayProcs.length,  color: '#facc15', bg: 'rgba(250,204,21,0.08)' },
               ].map(item => (
                 <div key={item.label} className="flex flex-col items-center py-2 rounded"
-                  style={{ background: item.bg, border: `1px solid rgba(255,255,255,0.06)` }}>
+                  style={{ background: item.bg, border: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="text-lg font-mono font-bold" style={{ color: item.color }}>{item.value}</span>
                   <span className="text-[9px] font-mono text-zinc-600 mt-0.5">{item.label}</span>
                 </div>
@@ -220,14 +226,13 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
             </div>
 
             {/* Functions list */}
-            {dispFunctions.length > 0 && (
+            {displayFuncs.length > 0 && (
               <div className="mb-2">
-                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5"
-                  style={{ color: '#fb923c' }}>
-                  Functions ({dispFunctions.length})
+                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5" style={{ color: '#fb923c' }}>
+                  Functions ({displayFuncs.length})
                 </p>
                 <div className="flex flex-col gap-0.5">
-                  {dispFunctions.map((s, i) => (
+                  {displayFuncs.map((s, i) => (
                     <div key={i}
                       onClick={() => s.start_line && navigateToFile(s.start_line)}
                       className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors"
@@ -236,12 +241,17 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
                       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(251,146,60,0.04)'; }}
                     >
                       <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#fb923c' }}>ƒ</span>
-                      <span className="text-[11px] font-mono font-semibold flex-1 truncate"
+                      <span className="text-[11px] font-mono font-semibold flex-1 min-w-0 truncate"
                         style={{ color: '#e4e4e7' }} title={s.name}>{s.name}</span>
                       {s.return_type && (
                         <span className="text-[9px] font-mono px-1 rounded flex-shrink-0"
                           style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}>
                           → {s.return_type}
+                        </span>
+                      )}
+                      {(s.parameters?.length ?? 0) > 0 && (
+                        <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
+                          {s.parameters!.length}p
                         </span>
                       )}
                       {deadSet.has(s.name) && (
@@ -260,14 +270,13 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
             )}
 
             {/* Procedures list */}
-            {dispProcedures.length > 0 && (
+            {displayProcs.length > 0 && (
               <div>
-                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5"
-                  style={{ color: '#facc15' }}>
-                  Procedures ({dispProcedures.length})
+                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5" style={{ color: '#facc15' }}>
+                  Procedures ({displayProcs.length})
                 </p>
                 <div className="flex flex-col gap-0.5">
-                  {dispProcedures.map((s, i) => (
+                  {displayProcs.map((s, i) => (
                     <div key={i}
                       onClick={() => s.start_line && navigateToFile(s.start_line)}
                       className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors"
@@ -276,7 +285,7 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
                       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(250,204,21,0.03)'; }}
                     >
                       <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#facc15' }}>⚡</span>
-                      <span className="text-[11px] font-mono font-semibold flex-1 truncate"
+                      <span className="text-[11px] font-mono font-semibold flex-1 min-w-0 truncate"
                         style={{ color: '#e4e4e7' }} title={s.name}>{s.name}</span>
                       {(s.parameters?.length ?? 0) > 0 && (
                         <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
@@ -299,7 +308,7 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
             )}
 
             {displaySubps.length === 0 && (
-              <p className="text-[10px] font-mono text-zinc-600">No subprograms found — parse the file first</p>
+              <p className="text-[10px] font-mono text-zinc-600">No subprograms found — click ⬛ Analyse on a .adb file first</p>
             )}
           </div>
         );
@@ -389,15 +398,30 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
             Object.entries(complexityMap).map(([name, score]) => {
               const { bar, text, label } = complexityColor(score);
               return (
-                <div key={name} className="flex items-center gap-3">
-                  {/* Full name visible on hover via title — no truncation */}
-                  <span
-                    className="text-xs font-mono text-zinc-400 w-28 overflow-hidden flex-shrink-0"
-                    style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={name}
-                  >
-                    {name}
-                  </span>
+                <div key={name} className="flex items-center gap-3 group/row relative">
+                  {/* Name — truncated in layout but full name shown in tooltip popup on hover */}
+                  <div className="relative flex-shrink-0 w-28">
+                    <span
+                      className="block text-xs font-mono text-zinc-400 overflow-hidden"
+                      style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {name}
+                    </span>
+                    {/* Tooltip — full name, appears above on hover */}
+                    <div
+                      className="absolute bottom-full left-0 mb-1 px-2 py-1 rounded text-[10px] font-mono text-zinc-100 pointer-events-none z-50
+                                 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150"
+                      style={{
+                        background: '#18181b',
+                        border: '1px solid rgba(250,204,21,0.3)',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '260px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {name}
+                    </div>
+                  </div>
                   <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.min((score / 10) * 100, 100)}%`, background: bar }} />
@@ -412,14 +436,28 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
               const score = complexityMap[sub.name] ?? 2;
               const { bar, text, label } = complexityColor(score);
               return (
-                <div key={sub.id} className="flex items-center gap-3">
-                  <span
-                    className="text-xs font-mono text-zinc-400 w-28 overflow-hidden flex-shrink-0"
-                    style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={sub.name}
-                  >
-                    {sub.name}
-                  </span>
+                <div key={sub.id} className="flex items-center gap-3 group/row relative">
+                  <div className="relative flex-shrink-0 w-28">
+                    <span
+                      className="block text-xs font-mono text-zinc-400 overflow-hidden"
+                      style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {sub.name}
+                    </span>
+                    <div
+                      className="absolute bottom-full left-0 mb-1 px-2 py-1 rounded text-[10px] font-mono text-zinc-100 pointer-events-none z-50
+                                 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150"
+                      style={{
+                        background: '#18181b',
+                        border: '1px solid rgba(250,204,21,0.3)',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '260px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {sub.name}
+                    </div>
+                  </div>
                   <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.min((score / 10) * 100, 100)}%`, background: bar }} />
