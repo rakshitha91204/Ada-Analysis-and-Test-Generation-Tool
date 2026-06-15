@@ -194,44 +194,7 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
         )}
       </div>
 
-      {/* ── Bug Report ─────────────────────────────────────────────────────── */}
-      {hasBackendData && (
-        <div className={cardClass} style={cardStyle}>
-          <div className="flex items-center gap-2 mb-2">
-            <Bug size={13} className="text-orange-400" />
-            <span className="text-xs font-mono font-semibold text-zinc-300">Bug Report</span>
-            <span className="ml-auto text-[10px] font-mono text-zinc-600">
-              {divByZero.length + nullDeref.length + infiniteLoops.length + unreachable.length} issues
-            </span>
-          </div>
-          {[
-            { label: 'Division by zero', items: divByZero, color: 'text-red-400' },
-            { label: 'Null dereference', items: nullDeref, color: 'text-orange-400' },
-            { label: 'Infinite loops', items: infiniteLoops, color: 'text-amber-400' },
-            { label: 'Unreachable code', items: unreachable, color: 'text-zinc-500' },
-          ].map(({ label, items, color }) =>
-            items.length > 0 ? (
-              <div key={label} className="mb-2">
-                <p className={`text-[10px] font-mono font-semibold mb-1 ${color}`}>{label} ({items.length})</p>
-                {items.map((b, i) => (
-                  <div key={i}
-                    onClick={() => b.line && navigateToFile(b.line)}
-                    className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
-                    <ChevronRight size={10} className={`${color} flex-shrink-0`} />
-                    <span className="text-xs font-mono text-zinc-400 flex-1 truncate">
-                      {b.expression ?? b.statement ?? b.note ?? label}
-                    </span>
-                    <span className="text-[9px] font-mono text-zinc-600">line {b.line}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null
-          )}
-          {divByZero.length + nullDeref.length + infiniteLoops.length + unreachable.length === 0 && (
-            <p className="text-xs text-zinc-600 font-mono">No bugs detected</p>
-          )}
-        </div>
-      )}
+      {/* ── Bug Report — REMOVED ─────────────────────────────────────────── */}
 
       {/* ── Logical Errors ─────────────────────────────────────────────────── */}
       {hasBackendData && (logicalErrors.length > 0 || perfWarnings.length > 0) && (
@@ -283,7 +246,14 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
               const { bar, text, label } = complexityColor(score);
               return (
                 <div key={name} className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-zinc-400 w-24 truncate flex-shrink-0">{name}</span>
+                  {/* Full name visible on hover via title — no truncation */}
+                  <span
+                    className="text-xs font-mono text-zinc-400 w-28 overflow-hidden flex-shrink-0"
+                    style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={name}
+                  >
+                    {name}
+                  </span>
                   <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.min((score / 10) * 100, 100)}%`, background: bar }} />
@@ -299,7 +269,13 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
               const { bar, text, label } = complexityColor(score);
               return (
                 <div key={sub.id} className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-zinc-400 w-24 truncate flex-shrink-0">{sub.name}</span>
+                  <span
+                    className="text-xs font-mono text-zinc-400 w-28 overflow-hidden flex-shrink-0"
+                    style={{ textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={sub.name}
+                  >
+                    {sub.name}
+                  </span>
                   <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.min((score / 10) * 100, 100)}%`, background: bar }} />

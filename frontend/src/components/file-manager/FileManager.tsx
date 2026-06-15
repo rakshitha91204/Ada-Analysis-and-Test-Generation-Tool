@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FileCode, FolderOpen, FolderClosed, RefreshCw, X,
-  Clock, Loader, CheckCircle, AlertCircle,
+  Clock, Loader, CheckCircle, AlertCircle, BarChart2,
 } from 'lucide-react';
 import { useFileStore } from '../../store/useFileStore';
 import { useEditorStore } from '../../store/useEditorStore';
@@ -18,13 +18,14 @@ import { showToast } from '../shared/Toast';
 const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent = false }) => {
   const { activeFileId, setActiveFile, removeFile } = useFileStore();
   const { openTab, setActiveTab } = useEditorStore();
-  const { results, syncToFile, clearResult } = useParseStore();
+  const { results, syncToFile, clearResult, setActiveResult } = useParseStore();
   const { setSubprograms } = useSubprogramStore();
   const { parseFile } = useFileParser();
   const isActive = file.id === activeFileId;
   const isParsed = !!results[file.id];
   const isParsing = file.status === 'parsing';
   const isError = file.status === 'error';
+  const isAdb = file.name.endsWith('.adb');
 
   // Click the file row → open in editor, switch subprograms, parse if needed
   const handleClick = async () => {
@@ -46,6 +47,28 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
       } catch {
         showToast(`Failed to parse ${file.name}`, 'error');
       }
+    }
+  };
+
+  // Analyse button — parse + show JSON + open Analysis tab + pop up analysis
+  const handleAnalyse = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveFile(file.id);
+    openTab(file.id);
+    syncToFile(file.id);
+
+    try {
+      if (!isParsed || file.status === 'pending') {
+        showToast(`Analysing ${file.name}…`, 'info');
+        await parseFile(file);
+      }
+      // Switch to JSON panel to show the result
+      setActiveResult(file.id);
+      // Switch editor to Analysis view
+      setActiveTab('analysis');
+      showToast(`Analysis ready for ${file.name}`, 'success');
+    } catch {
+      showToast(`Analysis failed for ${file.name}`, 'error');
     }
   };
 
@@ -77,7 +100,6 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
           status: 'pending',
           uploadedAt: new Date().toISOString(),
         });
-        // Clear old parse result when file is replaced
         clearResult(file.id);
       };
       reader.readAsText(f);
@@ -104,6 +126,26 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
       }`}
       style={indent ? { paddingLeft: 28 } : {}}
     >
+      {/* Analyse button — only for .adb files, always visible */}
+      {isAdb && (
+        <button
+          onClick={handleAnalyse}
+          title={`Analyse ${file.name}`}
+          className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all"
+          style={{
+            background: isParsing ? 'rgba(250,204,21,0.1)' : 'rgba(96,165,250,0.12)',
+            border: '1px solid rgba(96,165,250,0.25)',
+            color: isParsing ? '#facc15' : '#60a5fa',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.25)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = isParsing ? 'rgba(250,204,21,0.1)' : 'rgba(96,165,250,0.12)'; }}
+        >
+          {isParsing
+            ? <Loader size={9} className="animate-spin" />
+            : <BarChart2 size={9} />}
+        </button>
+      )}
+
       {/* File icon */}
       <FileCode size={12} style={{ color: isActive ? '#facc15' : '#52525b', flexShrink: 0 }} />
 
@@ -113,7 +155,7 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
       </span>
 
       {/* Status indicators */}
-      {isParsing && (
+      {isParsing && !isAdb && (
         <Loader size={11} className="animate-spin flex-shrink-0" style={{ color: '#facc15' }} />
       )}
       {isParsed && !isParsing && (
