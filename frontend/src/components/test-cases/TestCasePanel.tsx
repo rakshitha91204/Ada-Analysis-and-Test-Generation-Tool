@@ -1,12 +1,45 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSubprogramStore } from '../../store/useSubprogramStore';
 import { useParseStore } from '../../store/useParseStore';
 import { useFileStore } from '../../store/useFileStore';
+import { useTestCaseStore } from '../../store/useTestCaseStore';
 import { TestCaseHistory } from './TestCaseHistory';
 import { EmptyState } from '../shared/EmptyState';
 import { TestTube } from 'lucide-react';
 import '../../styles/TestStudio.css';
 import type { AdaAnalysisResult } from '../../utils/adaAnalyzer';
+
+// ── Persistent run history helpers (6-day TTL, keyed per subprogram) ──────────
+const RUN_HISTORY_MAX_DAYS = 6;
+
+function runHistoryKey(subpName: string): string {
+  return `ada_run_history__${subpName}`;
+}
+
+function readRunHistory(subpName: string): TestRunResult[] {
+  try {
+    const raw = localStorage.getItem(runHistoryKey(subpName));
+    if (!raw) return [];
+    const all = JSON.parse(raw) as TestRunResult[];
+    const cutoff = Date.now() - RUN_HISTORY_MAX_DAYS * 24 * 60 * 60 * 1000;
+    // Expire old entries — keep entries that have a valid date >= cutoff
+    const valid = all.filter(r => {
+      // timestamp may be a time-only string like "14:35:02" — treat those as today
+      const d = new Date(r.savedAt ?? r.timestamp);
+      if (isNaN(d.getTime())) return true; // keep if unparseable (was saved today)
+      return d.getTime() >= cutoff;
+    });
+    return valid;
+  } catch { return []; }
+}
+
+function writeRunHistory(subpName: string, history: TestRunResult[]): void {
+  try {
+    // Only keep last 100 entries per subprogram
+    const trimmed = history.slice(0, 100);
+    localStorage.setItem(runHistoryKey(subpName), JSON.stringify(trimmed));
+  } catch { /* storage full — ignore */ }
+}
 
 // ── Test Studio types ─────────────────────────────────────────────────────────
 interface TypeConstraint {
@@ -30,6 +63,7 @@ interface StudioSubprogram {
 }
 interface TestRunResult {
   id?: string; subprogram: string; timestamp: string;
+  savedAt?: string; // ISO date for 6-day TTL persistence
   status: 'pass'|'fail'|'error'; message: string;
   explanation?: string;
   actual: Record<string,string>; elapsed_ms: number;
@@ -258,13 +292,20 @@ async function studioGet<T>(path: string): Promise<T> {
 
 // ── TestStudioInputs — the full input/variables/history UI ───────────────────
 const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult | null }> = ({ subpName, analysis }) => {
+  const { saveToHistory } = useTestCaseStore();
   const [studioSubp, setStudioSubp] = useState<StudioSubprogram|null>(null);
   const [inputs,     setInputs]     = useState<Record<string,string>>({});
   const [expected,   setExpected]   = useState<Record<string,string>>({});
   const [running,    setRunning]    = useState(false);
   const [lastResult, setLastResult] = useState<TestRunResult|null>(null);
-  const [history,    setHistory]    = useState<TestRunResult[]>([]);
+  // History is loaded from localStorage on mount and persisted on every run
+  const [history,    setHistory]    = useState<TestRunResult[]>(() => readRunHistory(subpName));
   const [activeTab,  setActiveTab]  = useState<'inputs'|'variables'|'history'>('inputs');
+
+  // Reload history from localStorage when subprogram changes
+  useEffect(() => {
+    setHistory(readRunHistory(subpName));
+  }, [subpName]);
 
   // Build enriched subprogram — local parse store first, then API
   useEffect(() => {
@@ -327,7 +368,36 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     });
   }, [subpName, analysis]); // eslint-disable-line
 
-  // Track which autofill strategy to use next (cycles: normal → edge → boundary → random)
+  // Persist a run result — saves to localStorage (6-day TTL) + the global store
+  const persistRun = useCallback((entry: TestRunResult) => {
+    const withDate: TestRunResult = { ...entry, savedAt: new Date().toISOString() };
+    setHistory(prev => {
+      const next = [withDate, ...prev];
+      writeRunHistory(subpName, next);
+      return next;
+    });
+    setLastResult(withDate);
+    // Also save to the global TestCaseStore so the right-panel "Test History" shows it
+    saveToHistory({
+      id: crypto.randomUUID(),
+      subprogramId: subpName,
+      subprogramName: subpName,
+      timestamp: new Date().toISOString(),
+      testCases: [{
+        id: crypto.randomUUID(),
+        inputs: entry.inputs as Record<string, string | number | boolean>,
+        expected: Object.keys(entry.expected).length > 0
+          ? JSON.stringify(entry.expected)
+          : '—',
+        type: 'normal',
+        coverageHint: entry.message,
+        runStatus: entry.status === 'pass' ? 'pass'
+                 : entry.status === 'fail' ? 'fail'
+                 : 'fail',
+        actualOutput: JSON.stringify(entry.actual),
+      }],
+    });
+  }, [subpName, saveToHistory]);
   const autoFillStrategyRef = useRef<'normal'|'edge'|'boundary'|'random'>('normal');
   const strategyOrder: Array<'normal'|'edge'|'boundary'|'random'> = ['normal','edge','boundary','random'];
 
@@ -470,8 +540,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         inputs,
         expected,
       };
-      setLastResult(entry);
-      setHistory(h => [entry, ...h]);
+      persistRun(entry);
       setRunning(false);
       return;
     }
@@ -498,8 +567,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
           inputs,
           expected,
         };
-        setLastResult(entry);
-        setHistory(h => [entry, ...h]);
+        persistRun(entry);
         setRunning(false);
         return;
       }
@@ -514,8 +582,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         inputs,
         expected,
       };
-      setLastResult(entry);
-      setHistory(h => [entry, ...h]);
+      persistRun(entry);
     } catch (e) {
       const entry: TestRunResult = {
         subprogram: studioSubp.name,
@@ -528,8 +595,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         inputs,
         expected,
       };
-      setLastResult(entry);
-      setHistory(h => [entry, ...h]);
+      persistRun(entry);
     }
     setRunning(false);
   };
@@ -545,7 +611,9 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   // BUG FIX 4: exact direction comparison
   const inParams  = studioSubp.params.filter(p => p.dir === 'in' || p.dir === 'in out');
   const outParams = studioSubp.params.filter(p => p.dir === 'out' || p.dir === 'in out');
-  const hasNoParams = inParams.length === 0 && outParams.length === 0;
+  // A subprogram "has no params" only when truly no parameters exist at all
+  // (procedures with only 'out' params still have params — just no user inputs needed)
+  const hasNoParams = studioSubp.params.length === 0;
 
   return (
     <div className="ts-dark border rounded-lg overflow-hidden flex-shrink-0 mb-3"
@@ -584,12 +652,12 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         <div style={{ padding: '12px 14px' }}>
           {hasNoParams ? (
             <div style={{ padding: '8px 0 12px', fontSize: 12, color: '#71717a', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16 }}>ƒ</span>
+              <span style={{ fontSize: 16 }}>⚡</span>
               <span>
                 <strong style={{ color: '#a1a1aa' }}>{studioSubp.name}</strong> has no parameters.
                 {studioSubp.variables.length > 0
                   ? <> See the <button onClick={() => setActiveTab('variables')} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>variables tab</button> for declared variables.</>
-                  : ' This is a parameterless procedure.'}
+                  : ' This is a parameterless procedure — click Run Test to execute it.'}
               </span>
             </div>
           ) : (
@@ -824,22 +892,41 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         <div style={{ padding: '12px 14px' }}>
           <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#71717a' }}>
             test run history for {studioSubp.name}
+            {history.length > 0 && (
+              <span style={{ marginLeft: 8, fontSize: 9, color: '#52525b' }}>
+                · persists {RUN_HISTORY_MAX_DAYS} days · {history.length} run{history.length !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           {history.length === 0
-            ? <div style={{ fontSize: 12, color: '#71717a', padding: '8px 0' }}>no tests run yet</div>
-            : history.map((r,i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0',
-                  borderBottom:'0.5px solid rgba(255,255,255,0.06)', fontSize:11 }}>
-                  <StatusDot status={r.status} />
-                  <span style={{ color:'#71717a', minWidth:60 }}>{r.timestamp}</span>
-                  <span style={{ fontWeight:500, color: r.status==='pass'?'#4ade80':r.status==='fail'?'#f87171':'#fbbf24' }}>
-                    {r.status}
-                  </span>
-                  <span className="ts-mono" style={{ fontSize:10, color:'#52525b', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {JSON.stringify(r.inputs)}
-                  </span>
-                </div>
-              ))}
+            ? <div style={{ fontSize: 12, color: '#71717a', padding: '8px 0' }}>no tests run yet — run a test above to record history</div>
+            : history.map((r,i) => {
+                // Format the saved date nicely
+                const dateStr = (() => {
+                  try {
+                    const d = new Date(r.savedAt ?? r.timestamp);
+                    if (isNaN(d.getTime())) return r.timestamp;
+                    const now = new Date();
+                    const isToday = d.toDateString() === now.toDateString();
+                    if (isToday) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  } catch { return r.timestamp; }
+                })();
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0',
+                    borderBottom:'0.5px solid rgba(255,255,255,0.06)', fontSize:11 }}>
+                    <StatusDot status={r.status} />
+                    <span style={{ color:'#71717a', minWidth:72, fontSize: 10 }}>{dateStr}</span>
+                    <span style={{ fontWeight:600, fontSize: 11, color: r.status==='pass'?'#4ade80':r.status==='fail'?'#f87171':'#fbbf24', minWidth: 38 }}>
+                      {r.status.toUpperCase()}
+                    </span>
+                    <span className="ts-mono" style={{ fontSize:10, color:'#52525b', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {Object.entries(r.inputs).map(([k,v]) => `${k}=${v}`).join(', ') || '(no inputs)'}
+                    </span>
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>
