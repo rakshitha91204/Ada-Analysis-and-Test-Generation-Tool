@@ -252,7 +252,7 @@ const UploadPage: React.FC = () => {
         <div className="grid gap-4" style={{ gridTemplateColumns: projects.length > 0 ? '1fr 1fr' : '1fr' }}>
 
           {/* ── Left: Create / New Project ─────────────────────────────────── */}
-          <div className="flex flex-col gap-4 p-5 rounded-2xl"
+          <div className="flex flex-col gap-4 p-5 rounded-2xl overflow-hidden"
             style={{ background: 'rgba(22,22,26,0.95)', border: '1px solid #27272a' }}>
 
             <div className="flex items-center gap-2">
@@ -303,30 +303,35 @@ const UploadPage: React.FC = () => {
             {/* File dropzone */}
             <FileDropzone />
 
-            {/* File/folder previews */}
-            {looseFiles.length > 0 && (
+            {/* File/folder previews — scrollable when many files */}
+            {(looseFiles.length > 0 || folders.length > 0) && (
               <div className="flex flex-col gap-1.5">
-                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                  Files ({looseFiles.length})
-                </p>
-                {looseFiles.slice(0, 4).map((file, idx) => (
-                  <FilePreviewCard key={file.id} file={file} index={idx} />
-                ))}
-                {looseFiles.length > 4 && (
-                  <p className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                    +{looseFiles.length - 4} more files
+                {looseFiles.length > 0 && (
+                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    Files ({looseFiles.length}){folders.length > 0 ? ` · Folders (${folders.length})` : ''}
                   </p>
                 )}
-              </div>
-            )}
-            {folders.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                  Folders ({folders.length})
-                </p>
-                {folders.map((folder, idx) => (
-                  <FolderPreviewCard key={folder.id} folder={folder} index={idx} />
-                ))}
+                {folders.length > 0 && looseFiles.length === 0 && (
+                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    Folders ({folders.length})
+                  </p>
+                )}
+                {/* Scrollable file + folder list */}
+                <div
+                  className="flex flex-col gap-1 overflow-y-auto pr-1"
+                  style={{
+                    maxHeight: 220,
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: 'rgba(245,158,11,0.3) transparent',
+                  }}
+                >
+                  {looseFiles.map((file, idx) => (
+                    <FilePreviewCard key={file.id} file={file} index={idx} />
+                  ))}
+                  {folders.map((folder, idx) => (
+                    <FolderPreviewCard key={folder.id} folder={folder} index={idx} />
+                  ))}
+                </div>
               </div>
             )}
 
