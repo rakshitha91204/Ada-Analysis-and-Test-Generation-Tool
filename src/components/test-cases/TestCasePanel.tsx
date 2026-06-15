@@ -211,9 +211,12 @@ function StatusDot({ status }: { status: string }) {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function studioPost<T>(path: string, body: unknown): Promise<T> {
-  // Try Vite proxy first (/api/*), then direct backend as fallback
-  const urls = ['/api' + path, 'http://localhost:8001/api' + path];
-  for (const url of urls) {
+  // In dev: Vite proxies /api/* → localhost:8001 automatically
+  // In prod or direct access: fall back to absolute URL
+  const primaryUrl = '/api' + path;
+  const fallbackUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001/api') + path;
+
+  const tryFetch = async (url: string): Promise<Response | null> => {
     try {
       const r = await fetch(url, {
         method: 'POST',
@@ -221,21 +224,26 @@ async function studioPost<T>(path: string, body: unknown): Promise<T> {
         body: JSON.stringify(body),
       });
       const ct = r.headers.get('content-type') || '';
-      if (ct.includes('application/json') || ct.includes('text/')) {
-        return r.json();
-      }
-      // Non-JSON response from proxy (HTML fallback) — try next URL
-      continue;
+      if (ct.includes('application/json') || ct.includes('text/')) return r;
+      return null; // HTML response from proxy — not JSON
     } catch {
-      // Network error — try next URL
+      return null;
     }
-  }
-  return { error: 'Could not connect to backend on port 8001' } as unknown as T;
+  };
+
+  // Try proxy first
+  let res = await tryFetch(primaryUrl);
+  // Fall back to direct if proxy gave HTML or failed
+  if (!res) res = await tryFetch(fallbackUrl);
+  if (!res) return { error: 'Could not connect to backend on port 8001' } as unknown as T;
+  return res.json();
 }
 
 async function studioGet<T>(path: string): Promise<T> {
-  const urls = ['/api' + path, 'http://localhost:8001/api' + path];
-  for (const url of urls) {
+  const primaryUrl = '/api' + path;
+  const fallbackUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001/api') + path;
+
+  for (const url of [primaryUrl, fallbackUrl]) {
     try {
       const r = await fetch(url);
       const ct = r.headers.get('content-type') || '';
