@@ -27,27 +27,20 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
   const isError = file.status === 'error';
   const isAdb = file.name.endsWith('.adb');
 
-  // Click the file row → open in editor, switch subprograms, parse if needed
-  const handleClick = async () => {
+  // Click the file row → open in editor ONLY (no auto-parse)
+  // Parsing happens ONLY via the Analyse button (⬛ icon)
+  const handleClick = () => {
     setActiveFile(file.id);
     openTab(file.id);
     setActiveTab('code');
     syncToFile(file.id);
 
-    // If already parsed, immediately show only this file's subprograms
+    // If already parsed, show this file's subprograms immediately
     if (isParsed && results[file.id]) {
       const fileSubs = results[file.id].subprograms ?? [];
       setSubprograms(fileSubs);
     }
-
-    // Parse if not already parsed or currently parsing
-    if (!isParsed && !isParsing) {
-      try {
-        await parseFile(file);
-      } catch {
-        showToast(`Failed to parse ${file.name}`, 'error');
-      }
-    }
+    // NOTE: No auto-parse here — use the Analyse (⬛) button to parse
   };
 
   // Analyse button — parse + show JSON + open Analysis tab + pop up analysis
@@ -126,19 +119,29 @@ const FileRow: React.FC<{ file: AdaFile; indent?: boolean }> = ({ file, indent =
       }`}
       style={indent ? { paddingLeft: 28 } : {}}
     >
-      {/* Analyse button — only for .adb files, always visible */}
+      {/* Analyse button — for .adb files, always visible left of filename */}
       {isAdb && (
         <button
           onClick={handleAnalyse}
-          title={`Analyse ${file.name}`}
+          title={isParsed ? `Re-analyse ${file.name}` : `Analyse ${file.name} — generates JSON + opens Analysis panel`}
           className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all"
           style={{
-            background: isParsing ? 'rgba(250,204,21,0.1)' : 'rgba(96,165,250,0.12)',
-            border: '1px solid rgba(96,165,250,0.25)',
-            color: isParsing ? '#facc15' : '#60a5fa',
+            background: isParsing
+              ? 'rgba(250,204,21,0.15)'
+              : isParsed
+              ? 'rgba(74,222,128,0.12)'
+              : 'rgba(96,165,250,0.12)',
+            border: `1px solid ${isParsing ? 'rgba(250,204,21,0.3)' : isParsed ? 'rgba(74,222,128,0.3)' : 'rgba(96,165,250,0.3)'}`,
+            color: isParsing ? '#facc15' : isParsed ? '#4ade80' : '#60a5fa',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(96,165,250,0.25)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = isParsing ? 'rgba(250,204,21,0.1)' : 'rgba(96,165,250,0.12)'; }}
+          onMouseEnter={e => {
+            const btn = e.currentTarget as HTMLButtonElement;
+            btn.style.background = isParsing ? 'rgba(250,204,21,0.25)' : isParsed ? 'rgba(74,222,128,0.25)' : 'rgba(96,165,250,0.25)';
+          }}
+          onMouseLeave={e => {
+            const btn = e.currentTarget as HTMLButtonElement;
+            btn.style.background = isParsing ? 'rgba(250,204,21,0.15)' : isParsed ? 'rgba(74,222,128,0.12)' : 'rgba(96,165,250,0.12)';
+          }}
         >
           {isParsing
             ? <Loader size={9} className="animate-spin" />
@@ -284,7 +287,7 @@ export const FileManager: React.FC = () => {
       {/* Hint */}
       {files.length > 0 && (
         <p className="px-3 pb-1 text-[9px] font-mono" style={{ color: '#3f3f46' }}>
-          Click a file to open &amp; parse → JSON appears in JSON tab
+          Click a file to open in editor · Click ⬛ to analyse &amp; generate JSON
         </p>
       )}
 
