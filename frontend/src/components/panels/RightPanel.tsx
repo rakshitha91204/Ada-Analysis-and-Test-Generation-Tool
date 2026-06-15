@@ -19,7 +19,7 @@ export const RightPanel: React.FC = () => {
 
   const tabs: { id: RightTab; label: string; badge?: number }[] = [
     { id: 'files', label: 'Files' },
-    { id: 'json', label: 'JSON', badge: parsedCount > 0 ? parsedCount : undefined },
+    { id: 'json', label: '⬛ Report', badge: parsedCount > 0 ? parsedCount : undefined },
     { id: 'outline', label: 'Outline' },
     { id: 'packages', label: 'Packages' },
   ];

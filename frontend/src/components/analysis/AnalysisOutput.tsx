@@ -161,6 +161,150 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
         )}
       </div>
 
+      {/* ── Subprogram Summary ─────────────────────────────────────────────── */}
+      {(() => {
+        // Build subprogram list from the active file's analysis data (most accurate)
+        const subpIndex = analysis?.subprogram_index ?? {};
+        const allSubps = Object.values(subpIndex).flat();
+        const fileName = analysis?.file_paths?.[0] ?? activeResult?.fileName ?? '';
+        const functions  = allSubps.filter(s => s.is_function || !!s.return_type);
+        const procedures = allSubps.filter(s => !s.is_function && !s.return_type);
+        const deadSet    = new Set(analysis?.dead_code ?? []);
+
+        if (allSubps.length === 0 && !hasBackendData) return null;
+
+        const displaySubps = hasBackendData ? allSubps : subprograms.map(s => ({
+          name: s.name,
+          return_type: s.returnType ?? null,
+          is_function: s.kind === 'function',
+          start_line: s.startLine,
+          end_line: s.endLine,
+          parameters: [],
+        }));
+        const dispFunctions  = displaySubps.filter(s => s.is_function || !!s.return_type);
+        const dispProcedures = displaySubps.filter(s => !s.is_function && !s.return_type);
+
+        return (
+          <div className={cardClass} style={{ ...cardStyle, borderColor: 'rgba(167,139,250,0.2)' }}>
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-3">
+              <span style={{ fontSize: 13, color: '#a78bfa' }}>⬛</span>
+              <span className="text-xs font-mono font-semibold text-zinc-300">Subprogram Summary</span>
+              <span className="ml-auto text-[10px] font-mono" style={{ color: '#a78bfa' }}>
+                {displaySubps.length} total
+              </span>
+            </div>
+
+            {/* File name */}
+            {fileName && (
+              <div className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded"
+                style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)' }}>
+                <span style={{ fontSize: 10 }}>📄</span>
+                <span className="text-[10px] font-mono text-zinc-400 truncate" title={fileName}>{fileName}</span>
+              </div>
+            )}
+
+            {/* Totals grid */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { label: 'Total',      value: displaySubps.length,    color: '#e4e4e7', bg: 'rgba(255,255,255,0.05)' },
+                { label: 'Functions',  value: dispFunctions.length,   color: '#fb923c', bg: 'rgba(251,146,60,0.08)' },
+                { label: 'Procedures', value: dispProcedures.length,  color: '#facc15', bg: 'rgba(250,204,21,0.08)' },
+              ].map(item => (
+                <div key={item.label} className="flex flex-col items-center py-2 rounded"
+                  style={{ background: item.bg, border: `1px solid rgba(255,255,255,0.06)` }}>
+                  <span className="text-lg font-mono font-bold" style={{ color: item.color }}>{item.value}</span>
+                  <span className="text-[9px] font-mono text-zinc-600 mt-0.5">{item.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Functions list */}
+            {dispFunctions.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5"
+                  style={{ color: '#fb923c' }}>
+                  Functions ({dispFunctions.length})
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  {dispFunctions.map((s, i) => (
+                    <div key={i}
+                      onClick={() => s.start_line && navigateToFile(s.start_line)}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors"
+                      style={{ background: 'rgba(251,146,60,0.04)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(251,146,60,0.1)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(251,146,60,0.04)'; }}
+                    >
+                      <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#fb923c' }}>ƒ</span>
+                      <span className="text-[11px] font-mono font-semibold flex-1 truncate"
+                        style={{ color: '#e4e4e7' }} title={s.name}>{s.name}</span>
+                      {s.return_type && (
+                        <span className="text-[9px] font-mono px-1 rounded flex-shrink-0"
+                          style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}>
+                          → {s.return_type}
+                        </span>
+                      )}
+                      {deadSet.has(s.name) && (
+                        <span className="text-[8px] font-mono px-1 rounded flex-shrink-0"
+                          style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>dead</span>
+                      )}
+                      {s.start_line > 0 && (
+                        <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
+                          L{s.start_line}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Procedures list */}
+            {dispProcedures.length > 0 && (
+              <div>
+                <p className="text-[9px] font-mono uppercase tracking-wider mb-1.5"
+                  style={{ color: '#facc15' }}>
+                  Procedures ({dispProcedures.length})
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  {dispProcedures.map((s, i) => (
+                    <div key={i}
+                      onClick={() => s.start_line && navigateToFile(s.start_line)}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors"
+                      style={{ background: 'rgba(250,204,21,0.03)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(250,204,21,0.08)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(250,204,21,0.03)'; }}
+                    >
+                      <span className="text-[11px] font-mono flex-shrink-0" style={{ color: '#facc15' }}>⚡</span>
+                      <span className="text-[11px] font-mono font-semibold flex-1 truncate"
+                        style={{ color: '#e4e4e7' }} title={s.name}>{s.name}</span>
+                      {(s.parameters?.length ?? 0) > 0 && (
+                        <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
+                          {s.parameters!.length} param{s.parameters!.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {deadSet.has(s.name) && (
+                        <span className="text-[8px] font-mono px-1 rounded flex-shrink-0"
+                          style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>dead</span>
+                      )}
+                      {s.start_line > 0 && (
+                        <span className="text-[9px] font-mono flex-shrink-0" style={{ color: '#52525b' }}>
+                          L{s.start_line}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {displaySubps.length === 0 && (
+              <p className="text-[10px] font-mono text-zinc-600">No subprograms found — parse the file first</p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Dead Code ──────────────────────────────────────────────────────── */}
       <div className={cardClass} style={cardStyle}>
         <div className="flex items-center gap-2 mb-2">
@@ -551,28 +695,6 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
         </div>
       )}
 
-      {/* ── Subprogram Summary ──────────────────────────────────────────────── */}
-      {!compact && subprograms.length > 0 && (
-        <div className={cardClass} style={cardStyle}>
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart2 size={13} className="text-purple-400" />
-            <span className="text-xs font-mono font-semibold text-zinc-300">Subprogram Summary</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: 'Total', value: subprograms.length, color: 'text-zinc-300' },
-              { label: 'Procedures', value: subprograms.filter((s) => s.kind === 'procedure').length, color: 'text-amber-400' },
-              { label: 'Functions', value: subprograms.filter((s) => s.kind === 'function').length, color: 'text-orange-400' },
-              { label: 'With Tests', value: subprograms.filter((s) => s.testCount > 0).length, color: 'text-green-400' },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-800/40">
-                <span className="text-[10px] font-mono text-zinc-500">{item.label}</span>
-                <span className={`text-sm font-mono font-bold ${item.color}`}>{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       </div>{/* end inner flex column */}
     </div>
   );
