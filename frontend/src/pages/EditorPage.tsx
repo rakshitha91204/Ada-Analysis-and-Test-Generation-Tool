@@ -25,6 +25,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useFileParser } from '../hooks/useFileParser';
 import { loadSession } from '../utils/sessionStorage';
+import { useProjectStore } from '../store/useProjectStore';
 import { downloadHTMLReport, downloadProjectJSON } from '../utils/reportExport';
 import { mockFiles } from '../mocks/mockFiles';
 import { mockSubprograms } from '../mocks/mockSubprograms';
@@ -43,6 +44,7 @@ const EditorPage: React.FC = () => {
     rightPanelWidth, bottomPanelHeight, setRightPanelWidth, setBottomPanelHeight,
     fontSize, setFontSize, minimapEnabled, setMinimapEnabled, splitEditor, setSplitEditor,
   } = useSettingsStore();
+  const { saveProject, activeProjectName } = useProjectStore();
 
   const [cmdOpen, setCmdOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -51,9 +53,13 @@ const EditorPage: React.FC = () => {
   const rightPanel = useResizablePanel(rightPanelWidth, 'horizontal', setRightPanelWidth, 180, 600);
   const bottomPanel = useResizablePanel(bottomPanelHeight, 'vertical', setBottomPanelHeight, 100, 500);
 
-  // Whenever the active file changes, sync the JSON panel to show that file's result
-  // (only if a result already exists — don't auto-parse)
+  // Auto-save project whenever files change (debounced via useFileStore's persist)
   const { activeFileId } = useFileStore();
+  useEffect(() => {
+    if (activeProjectName && files.length > 0) {
+      saveProject(files, [], activeFileId);
+    }
+  }, [files, activeFileId, activeProjectName]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeFileId) {
       syncToFile(activeFileId);
@@ -106,6 +112,15 @@ const EditorPage: React.FC = () => {
   }, [files.length]); // eslint-disable-line
 
   useKeyboardShortcuts(setCmdOpen);
+
+  // ── Auto-save project on file/folder changes ────────────────────────────
+  const { folders } = useFileStore();
+  useEffect(() => {
+    if (activeProjectName && files.length > 0) {
+      saveProject(files, folders, activeFileId ?? null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files, folders, activeFileId, activeProjectName]);
 
   // ? key → shortcuts modal
   useEffect(() => {
@@ -187,6 +202,14 @@ const EditorPage: React.FC = () => {
         <div className="ide-topbar-logo">
           <Diamond size={15} style={{ color: 'var(--accent-primary)' }} />
           <span className="hidden sm:block">Ada IDE</span>
+          {activeProjectName && (
+            <>
+              <span style={{ color: 'var(--text-disabled)', fontSize: 11, margin: '0 2px' }}>/</span>
+              <span style={{ color: 'var(--accent-primary)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {activeProjectName}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="ide-topbar-sep" />

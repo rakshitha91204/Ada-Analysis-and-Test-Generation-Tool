@@ -4,12 +4,24 @@ import { Subprogram, Parameter } from '../types/subprogram.types';
 
 // ─── Inlined: storageUtils ────────────────────────────────────────────────────
 const HISTORY_KEY = 'ada_test_history';
+const HISTORY_MAX_DAYS = 6; // auto-expire entries older than 6 days
 
 function readHistory(): TestCaseSet[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as TestCaseSet[];
+    const all = JSON.parse(raw) as TestCaseSet[];
+    // Auto-expire entries older than HISTORY_MAX_DAYS
+    const cutoff = Date.now() - HISTORY_MAX_DAYS * 24 * 60 * 60 * 1000;
+    const valid = all.filter(h => {
+      const ts = new Date(h.timestamp).getTime();
+      return !isNaN(ts) && ts >= cutoff;
+    });
+    // If some expired, persist the cleaned list
+    if (valid.length !== all.length) {
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+    }
+    return valid;
   } catch {
     return [];
   }
