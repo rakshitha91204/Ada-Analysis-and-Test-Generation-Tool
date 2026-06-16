@@ -77,20 +77,24 @@ const EditorPage: React.FC = () => {
       filesWithPending.forEach((f) => openTab(f.id));
       if (session.activeFileId) setActiveFile(session.activeFileId);
       // Real test history is already loaded from localStorage by useTestCaseStore init
+      // DO NOT overwrite it — history persists across restarts via localStorage
     } else if (files.length === 0) {
-      // No real files — load mock demo data
+      // No real files — load mock demo data only if there's no persisted history
+      const hasRealHistory = useTestCaseStore.getState().history.length > 0;
       addFiles(mockFiles);
       mockFiles.forEach((f) => openTab(f.id));
       setActiveFile('file_calculator_adb');
       setSubprograms(mockSubprograms);
       selectSubprogram('sub_multiply');
-      // Only seed mock test history in demo mode
-      setHistory(mockTestCaseSets);
-      Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
-        setCurrentTests(subId, tests);
-      });
+      // Only seed mock test history if there is no real persisted history
+      if (!hasRealHistory) {
+        setHistory(mockTestCaseSets);
+        Object.entries(mockCurrentTestSets).forEach(([subId, tests]) => {
+          setCurrentTests(subId, tests);
+        });
+      }
     }
-    // When real files exist: history is already loaded from localStorage — don't overwrite
+    // History is always loaded from localStorage by useTestCaseStore init — never overwrite
   }, []); // eslint-disable-line
 
   // When files are added from the upload page (navigating from UploadPage),
@@ -186,12 +190,60 @@ const EditorPage: React.FC = () => {
   };
 
   const handleExportProject = () => {
+    // Collect all test run history from localStorage (the Studio run history)
+    const allRunHistory: Array<{ subprogram: string; runs: unknown[] }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('ada_run_history__')) {
+        try {
+          const subName = key.replace('ada_run_history__', '');
+          const runs = JSON.parse(localStorage.getItem(key) ?? '[]');
+          if (Array.isArray(runs) && runs.length > 0) {
+            allRunHistory.push({ subprogram: subName, runs });
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+
     downloadProjectJSON({
       files,
       subprograms,
       testSets: testHistory,
+      runHistory: allRunHistory,
       generatedAt: new Date().toISOString(),
     });
+  };
+
+  const handleDownloadHistory = () => {
+    // Download all test run history keyed per subprogram
+    const allHistory: Record<string, unknown[]> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('ada_run_history__')) {
+        try {
+          const subName = key.replace('ada_run_history__', '');
+          const runs = JSON.parse(localStorage.getItem(key) ?? '[]');
+          if (Array.isArray(runs) && runs.length > 0) {
+            allHistory[subName] = runs;
+          }
+        } catch { /* skip */ }
+      }
+    }
+    // Also include generated test sets
+    const combined = {
+      exportedAt: new Date().toISOString(),
+      generatedTestSets: testHistory,
+      runHistory: allHistory,
+      note: 'runHistory shows all actual test executions with inputs, expected, and actual outputs.',
+    };
+    const blob = new Blob([JSON.stringify(combined, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ada_test_history_${Date.now()}.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    showToast('Test history downloaded', 'success');
   };
 
   return (
@@ -256,10 +308,11 @@ const EditorPage: React.FC = () => {
               <button className="icon-btn" onClick={() => setReportOpen(v => !v)}><FileText size={14} /></button>
             </Tooltip>
             {reportOpen && (
-              <div className="float-panel" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, minWidth: 210, zIndex: 50 }}>
+              <div className="float-panel" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, minWidth: 230, zIndex: 50 }}>
                 {[
                   { label: '📄 Export HTML Report', action: handleExportReport },
-                  { label: '💾 Export Project (.json)', action: handleExportProject },
+                  { label: '💾 Download Project (.json)', action: handleExportProject },
+                  { label: '🧪 Download Test History', action: handleDownloadHistory },
                 ].map((item) => (
                   <button key={item.label}
                     onClick={() => { item.action(); setReportOpen(false); }}

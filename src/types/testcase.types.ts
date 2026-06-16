@@ -18,3 +18,19 @@ export interface TestCaseSet {
   tag?: string;
   testCases: TestCase[];
 }
+
+// ── TestRunRecord: a single actual test execution stored in run history ────────
+export interface TestRunRecord {
+  id?: string;
+  subprogram: string;
+  timestamp: string;
+  savedAt?: string;          // ISO date for TTL expiry
+  status: 'pass' | 'fail' | 'error';
+  message: string;
+  explanation?: string;
+  elapsed_ms: number;
+  inputs: Record<string, string>;
+  expected: Record<string, string>;
+  actual: Record<string, string>;
+  violations?: Array<{ variable: string; type: string; value: string; error: string }>;
+}

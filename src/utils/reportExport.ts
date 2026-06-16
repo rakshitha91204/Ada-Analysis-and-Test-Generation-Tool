@@ -179,7 +179,7 @@ export function downloadHTMLReport(data: ReportData) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadProjectJSON(data: Omit<ReportData, 'diagnostics'> & { diagnostics?: Diagnostic[] }) {
+export function downloadProjectJSON(data: Omit<ReportData, 'diagnostics'> & { diagnostics?: Diagnostic[]; runHistory?: Array<{ subprogram: string; runs: unknown[] }> }) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
