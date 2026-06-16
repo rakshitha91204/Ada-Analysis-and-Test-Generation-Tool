@@ -337,14 +337,15 @@ async function studioGet<T>(path: string): Promise<T> {
 // ── TestStudioInputs — the full input/variables/history UI ───────────────────
 const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult | null }> = ({ subpName, analysis }) => {
   const { saveToHistory } = useTestCaseStore();
-  const [studioSubp, setStudioSubp] = useState<StudioSubprogram|null>(null);
-  const [inputs,     setInputs]     = useState<Record<string,string>>({});
-  const [expected,   setExpected]   = useState<Record<string,string>>({});
-  const [running,    setRunning]    = useState(false);
-  const [lastResult, setLastResult] = useState<TestRunResult|null>(null);
+  const [studioSubp, setStudioSubp]       = useState<StudioSubprogram|null>(null);
+  const [inputs,     setInputs]           = useState<Record<string,string>>({});
+  const [localVars,  setLocalVars]        = useState<Record<string,string>>({});  // editable local var initial values
+  const [expected,   setExpected]         = useState<Record<string,string>>({});
+  const [running,    setRunning]          = useState(false);
+  const [lastResult, setLastResult]       = useState<TestRunResult|null>(null);
   // History is loaded from localStorage on mount and persisted on every run
-  const [history,    setHistory]    = useState<TestRunResult[]>(() => readRunHistory(subpName));
-  const [activeTab,  setActiveTab]  = useState<'inputs'|'variables'|'history'>('inputs');
+  const [history,    setHistory]          = useState<TestRunResult[]>(() => readRunHistory(subpName));
+  const [activeTab,  setActiveTab]        = useState<'inputs'|'variables'|'history'>('inputs');
 
   // Reload history from localStorage when subprogram changes
   useEffect(() => {
@@ -366,6 +367,13 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         init[p.name] = typeDefault(p.type, p.name);
       });
       setInputs(init);
+
+      // Pre-fill local variable initial values (editable — user sets initial state for testing)
+      const localInit: Record<string,string> = {};
+      found.variables.filter(v => v.scope === 'local').forEach(v => {
+        localInit[v.name] = typeDefault(v.type, v.name);
+      });
+      setLocalVars(localInit);
 
       // Pre-fill expected for out params (scalar types only — leave complex blank)
       const exp: Record<string,string> = {};
@@ -524,11 +532,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     const nextIdx = (strategyOrder.indexOf(strategy) + 1) % strategyOrder.length;
     autoFillStrategyRef.current = strategyOrder[nextIdx];
 
-    // Build param_types to send so backend can generate values even without session
+    // Build param_types for BOTH params AND local variables
     const param_types: Record<string, string> = {};
     studioSubp.params
       .filter(p => p.dir === 'in' || p.dir === 'in out')
       .forEach(p => { param_types[p.name] = p.type; });
+    // Include local variables so backend can generate initial values for them too
+    studioSubp.variables
+      .filter(v => v.scope === 'local')
+      .forEach(v => { param_types[v.name] = v.type; });
 
     try {
       // Try the backend API first — send param_types so it works without session
@@ -539,19 +551,31 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       }>('/autofill', {
         subprogram: studioSubp.name,
         strategy,
-        param_types,  // send so backend can fill even without session
+        param_types,
       });
 
-      // Only use API values if non-empty (session has this subprogram)
       if (res.values && Object.keys(res.values).length > 0) {
-        setInputs(prev => ({ ...prev, ...res.values }));
+        // Split returned values between params and local vars
+        const newInputs: Record<string,string> = { ...inputs };
+        const newLocals: Record<string,string> = { ...localVars };
+        const localNames = new Set(studioSubp.variables.filter(v => v.scope === 'local').map(v => v.name.toLowerCase()));
+
+        for (const [k, v] of Object.entries(res.values)) {
+          if (localNames.has(k.toLowerCase())) {
+            newLocals[k] = v;
+          } else {
+            newInputs[k] = v;
+          }
+        }
+        setInputs(newInputs);
+        setLocalVars(newLocals);
         return;
       }
     } catch {
       // Fall through to local
     }
 
-    // Local fallback — uses smartDefault with name+type hints from parsed params
+    // Local fallback — fill params with smartDefault
     const next: Record<string,string> = {};
     studioSubp.params
       .filter(p => p.dir === 'in' || p.dir === 'in out')
@@ -559,6 +583,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         next[p.name] = smartDefault(p.name, p.type, p.constraint, strategy);
       });
     setInputs(next);
+
+    // Also fill local variables with smartDefault
+    const nextLocals: Record<string,string> = {};
+    studioSubp.variables
+      .filter(v => v.scope === 'local')
+      .forEach(v => {
+        nextLocals[v.name] = smartDefault(v.name, v.type, typeConstraint(v.type), strategy);
+      });
+    setLocalVars(nextLocals);
   };
 
   // Auto-generate test cases for ALL params, even unknown types — called on first load
@@ -574,19 +607,31 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     if (!studioSubp) return;
     setRunning(true);
 
-    // Build param_types map to send with the request so backend can validate
-    // even when the subprogram isn't in the backend session
+    // Build param_types for ALL params AND local variables
     const param_types: Record<string, string> = {};
     studioSubp.params.forEach(p => {
       param_types[p.name] = p.type;
     });
+    // Include local variables in param_types so backend validates them too
+    studioSubp.variables.filter(v => v.scope === 'local').forEach(v => {
+      param_types[v.name] = v.type;
+    });
+
+    // Merge param inputs + local var initial values into one inputs dict for backend
+    const allInputs: Record<string,string> = {
+      ...inputs,
+      ...localVars,   // local variable initial values sent alongside params
+    };
 
     // Client-side pre-validation for known types (immediate feedback)
+    // Validates both params AND local variable initial values
     const clientViolations: Array<{variable: string; type: string; value: string; error: string}> = [];
+
+    // Validate param inputs
     studioSubp.params
       .filter(p => p.dir === 'in' || p.dir === 'in out')
       .forEach(p => {
-        const val = inputs[p.name] ?? '';
+        const val = allInputs[p.name] ?? '';
         const c = p.constraint;
         if (c.kind === 'integer') {
           const n = Number(val);
@@ -612,6 +657,23 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         }
       });
 
+    // Validate local variable initial values (scalar types only)
+    studioSubp.variables.filter(v => v.scope === 'local').forEach(v => {
+      const val = localVars[v.name] ?? '';
+      if (!val) return; // blank is fine — backend uses default
+      const c = v.constraint;
+      if (c.kind === 'integer') {
+        const n = Number(val);
+        if (isNaN(n) || !Number.isInteger(n)) {
+          clientViolations.push({ variable: v.name, type: v.type, value: val, error: `Local var: expected integer, got '${val}'` });
+        } else if (c.min !== undefined && n < c.min) {
+          clientViolations.push({ variable: v.name, type: v.type, value: val, error: `Local var: ${n} out of range [${c.min} .. ${c.max}]` });
+        } else if (c.max !== undefined && n > c.max) {
+          clientViolations.push({ variable: v.name, type: v.type, value: val, error: `Local var: ${n} out of range [${c.min} .. ${c.max}]` });
+        }
+      }
+    });
+
     // If client-side violations found, show error immediately without hitting backend
     if (clientViolations.length > 0) {
       const details = clientViolations.map(v => `${v.variable}: ${v.error}`).join('; ');
@@ -624,7 +686,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         actual: {},
         elapsed_ms: 0,
         violations: clientViolations,
-        inputs,
+        inputs: allInputs,
         expected,
       };
       persistRun(entry);
@@ -635,9 +697,9 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     try {
       const res = await studioPost<TestRunResult & { error?: string }>('/test/run', {
         subprogram: studioSubp.name,
-        inputs,
+        inputs: allInputs,      // params + local var initial values
         expected,
-        param_types,  // Send type info so backend can validate even without session
+        param_types,            // type info for all params + locals
       });
 
       // Handle backend error response
@@ -651,7 +713,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
           explanation: `${errMsg}. Make sure the backend is running at http://localhost:8001 and the file has been uploaded and parsed.`,
           actual: {},
           elapsed_ms: 0,
-          inputs,
+          inputs: allInputs,
           expected,
         };
         persistRun(entry);
@@ -666,7 +728,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         status: (status === 'pass' || status === 'fail' || status === 'error') ? status : 'pass',
         subprogram: studioSubp.name,
         timestamp: new Date().toLocaleTimeString(),
-        inputs,
+        inputs: allInputs,
         expected,
       };
       persistRun(entry);
@@ -679,7 +741,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         explanation: `Could not reach backend: ${(e as Error).message}. Make sure the backend is running on port 8001.`,
         actual: {},
         elapsed_ms: 0,
-        inputs,
+        inputs: allInputs,
         expected,
       };
       persistRun(entry);
@@ -817,31 +879,44 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                 </div>
               </>}
 
-              {/* LOCAL VARIABLES — shown inline as read-only context */}
+              {/* LOCAL VARIABLES — editable initial values for testing */}
               {studioSubp.variables.filter(v => v.scope === 'local').length > 0 && <>
-                <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#52525b' }}>
-                  local variables — declared in subprogram
+                <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#a5b4fc' }}>
+                  local variables — set initial values for test
+                  <span style={{ fontSize: 9, color: '#52525b', marginLeft: 8 }}>
+                    (initial state before procedure runs)
+                  </span>
                 </div>
                 <div className="ts-input-grid" style={{ marginBottom: 12 }}>
                   {studioSubp.variables.filter(v => v.scope === 'local').map((v, i) => (
-                    <div key={i} className="ts-input-card" style={{ opacity: 0.7 }}>
+                    <div key={i} className="ts-input-card"
+                      style={{ borderColor: 'rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.04)' }}>
                       <div className="ts-input-header">
                         <span className="ts-input-dir" style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 9 }}>local</span>
                         <span className="ts-input-name">{v.name}</span>
                       </div>
                       <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
                       {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
-                      <input className="ts-input-field ts-mono"
-                        value={typeDefault(v.type, v.name)}
-                        readOnly
-                        style={{ opacity: 0.6, cursor: 'default', background: 'transparent' }}
-                        title="Local variable — default initial value shown" />
+                      {/* Editable — user sets the initial value for this local variable */}
+                      {v.constraint.kind === 'boolean'
+                        ? <select className="ts-input-field"
+                            value={localVars[v.name] ?? typeDefault(v.type, v.name)}
+                            onChange={e => setLocalVars(lv => ({ ...lv, [v.name]: e.target.value }))}>
+                            <option>False</option><option>True</option>
+                          </select>
+                        : <input className="ts-input-field"
+                            type={v.constraint.kind === 'integer' ? 'number' : 'text'}
+                            value={localVars[v.name] ?? typeDefault(v.type, v.name)}
+                            onChange={e => setLocalVars(lv => ({ ...lv, [v.name]: e.target.value }))}
+                            placeholder={typeDefault(v.type, v.name)}
+                            title={`Initial value for local variable ${v.name} : ${v.type}`}
+                            min={v.constraint.min} max={v.constraint.max} />}
                     </div>
                   ))}
                 </div>
               </>}
 
-              {/* CONSTANTS — shown with their value */}
+              {/* CONSTANTS — shown read-only with their declared value */}
               {studioSubp.variables.filter(v => v.scope === 'constant').length > 0 && <>
                 <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#52525b' }}>
                   constants
@@ -875,7 +950,13 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
               ✨ auto-fill <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>({autoFillStrategyRef.current})</span>
             </button>}
             {!hasNoParams && <button className="ts-btn" onClick={() => {
-              const blob = new Blob([JSON.stringify(inputs, null, 2)], {type:'application/json'});
+              const exportData = {
+                subprogram: studioSubp.name,
+                parameters: inputs,
+                local_variables: localVars,
+                expected_outputs: expected,
+              };
+              const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
               const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
               a.download = `${studioSubp.name}_inputs.json`; a.click();
             }}>⬇ export inputs</button>}
