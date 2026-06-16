@@ -53,6 +53,7 @@ interface StudioParam {
 interface StudioVariable {
   name: string; type: string; type_normalized: string;
   scope: 'local'|'global'|'constant'; constraint: TypeConstraint;
+  initialValue?: string; // default/declared initial value from backend
 }
 interface StudioSubprogram {
   name: string; file: string; file_name: string;
@@ -144,46 +145,74 @@ function buildStudioSubprogram(
   }
 
   // Build variables from variables_info — multi-schema lookup
+  // NOTE: Parameters are already in `params[]` — do NOT add them to variables
   const variables: StudioVariable[] = [];
   const fileVars = (analysis.variables_info || {})[filePath] || {};
   const seen = new Set<string>();
 
-  const addVar = (name: string, type: string, scope: 'local'|'global'|'constant') => {
-    const key = name.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    const t = type || 'Unknown';
-    variables.push({ name, type: t, type_normalized: t.toLowerCase(), scope, constraint: typeConstraint(t) });
+  // Helper: also try the basename key if filePath has a directory
+  const baseKey = filePath.split(/[/\\]/).pop() ?? filePath;
+  const fileVarsAlt = (analysis.variables_info || {})[baseKey] || {};
+  const mergedVars = {
+    parameters:       (fileVars.parameters       ?? fileVarsAlt.parameters       ?? []) as Array<{name:string;type:string;mode:string;line:number;subprogram:string}>,
+    locals:           (fileVars.locals            ?? fileVarsAlt.locals            ?? []) as Array<{name:string;type:string;is_constant:boolean;line:number;subprogram:string;default?:string}>,
+    globals:          (fileVars.globals           ?? fileVarsAlt.globals           ?? []) as Array<{name:string;type:string;is_constant:boolean;line:number;default?:string}>,
+    global_usage:     (fileVars.global_usage      ?? fileVarsAlt.global_usage      ?? {}) as Record<string,{reads:string[];writes:string[]}>,
+    local_variables:  (fileVars.local_variables   ?? fileVarsAlt.local_variables   ?? {}) as Record<string,Record<string,{type:string}>>,
+    global_variables: (fileVars.global_variables  ?? fileVarsAlt.global_variables  ?? {}) as Record<string,Record<string,{type:string}>>,
+    global_constants: (fileVars.global_constants  ?? fileVarsAlt.global_constants  ?? {}) as Record<string,Record<string,{type:string}>>,
   };
 
-  // ── Pass 1: flat-list schema (richer, has line numbers and subprogram tag) ──
-  // Parameters from flat list
-  for (const p of (fileVars.parameters || [])) {
-    if ((p.subprogram === actualName || p.subprogram?.toLowerCase() === nameLower) && p.name) {
-      addVar(p.name, p.type || 'Unknown', 'local');
-    }
-  }
+  // Param names — used to skip adding params into variables
+  const paramNames = new Set(params.map(p => p.name.toLowerCase()));
+
+  const addVar = (name: string, type: string, scope: 'local'|'global'|'constant', initialValue?: string) => {
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    if (paramNames.has(key)) return; // already in params — don't duplicate
+    seen.add(key);
+    const t = type || 'Unknown';
+    variables.push({
+      name, type: t, type_normalized: t.toLowerCase(), scope,
+      constraint: typeConstraint(t),
+      ...(initialValue ? { initialValue } : {}),
+    } as StudioVariable & { initialValue?: string });
+  };
+
+  // ── Pass 1: flat-list schema (richer — has line numbers, subprogram tag, initial values) ──
+  // Skip parameters (already in params[])
   // Locals from flat list
-  for (const v of (fileVars.locals || [])) {
-    if ((v.subprogram === actualName || v.subprogram?.toLowerCase() === nameLower) && v.name) {
-      addVar(v.name, v.type || 'Unknown', v.is_constant ? 'constant' : 'local');
+  for (const v of mergedVars.locals) {
+    const subMatch = v.subprogram === actualName || v.subprogram?.toLowerCase() === nameLower;
+    if (subMatch && v.name && !paramNames.has(v.name.toLowerCase())) {
+      addVar(v.name, v.type || 'Unknown', v.is_constant ? 'constant' : 'local',
+             v.default != null ? String(v.default) : undefined);
     }
   }
-  // Globals from flat list (used by this subprogram via global_usage)
+
+  // Globals used by this subprogram (case-insensitive match on global_usage key)
+  const usageKey = Object.keys(mergedVars.global_usage).find(
+    k => k === actualName || k.toLowerCase() === nameLower
+  ) ?? actualName;
   const usedGlobals = new Set<string>([
-    ...((fileVars.global_usage || {})[actualName]?.reads || []),
-    ...((fileVars.global_usage || {})[actualName]?.writes || []),
+    ...(mergedVars.global_usage[usageKey]?.reads  || []).map((s: string) => s.toLowerCase()),
+    ...(mergedVars.global_usage[usageKey]?.writes || []).map((s: string) => s.toLowerCase()),
   ]);
-  for (const g of (fileVars.globals || [])) {
-    if (usedGlobals.has(g.name) && g.name) {
-      addVar(g.name, g.type || 'Unknown', g.is_constant ? 'constant' : 'global');
+  for (const g of mergedVars.globals) {
+    if (g.name && usedGlobals.has(g.name.toLowerCase())) {
+      addVar(g.name, g.type || 'Unknown', g.is_constant ? 'constant' : 'global',
+             g.default != null ? String(g.default) : undefined);
     }
   }
 
   // ── Pass 2: legacy dict schema (fallback / supplement) ──────────────────────
-  const legacyLocals  = (fileVars.local_variables  || {})[actualName] || {};
-  const legacyGlobals = (fileVars.global_variables || {})[actualName] || {};
-  const legacyConsts  = (fileVars.global_constants || {})[actualName] || {};
+  // Case-insensitive lookup for legacy dicts
+  const legacyKey = Object.keys(mergedVars.local_variables).find(
+    k => k === actualName || k.toLowerCase() === nameLower
+  ) ?? actualName;
+  const legacyLocals  = mergedVars.local_variables[legacyKey]  || {};
+  const legacyGlobals = mergedVars.global_variables[legacyKey] || {};
+  const legacyConsts  = mergedVars.global_constants[legacyKey] || {};
 
   for (const [vname, vdata] of Object.entries(legacyLocals)) {
     const t = (vdata as { type: string }).type || 'Unknown';
@@ -340,6 +369,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
   const [studioSubp, setStudioSubp]       = useState<StudioSubprogram|null>(null);
   const [inputs,     setInputs]           = useState<Record<string,string>>({});
   const [localVars,  setLocalVars]        = useState<Record<string,string>>({});  // editable local var initial values
+  const [globalVars, setGlobalVars]       = useState<Record<string,string>>({});  // editable global var initial values
   const [expected,   setExpected]         = useState<Record<string,string>>({});
   const [running,    setRunning]          = useState(false);
   const [lastResult, setLastResult]       = useState<TestRunResult|null>(null);
@@ -368,12 +398,25 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       });
       setInputs(init);
 
-      // Pre-fill local variable initial values (editable — user sets initial state for testing)
+      // Pre-fill local variable initial values — use backend's declared default if available
       const localInit: Record<string,string> = {};
       found.variables.filter(v => v.scope === 'local').forEach(v => {
-        localInit[v.name] = typeDefault(v.type, v.name);
+        const backendDefault = (v as StudioVariable & { initialValue?: string }).initialValue;
+        localInit[v.name] = backendDefault && backendDefault !== 'null' && backendDefault !== 'None'
+          ? backendDefault
+          : typeDefault(v.type, v.name);
       });
       setLocalVars(localInit);
+
+      // Pre-fill global variable initial values (editable — user sets globals for testing)
+      const globalInit: Record<string,string> = {};
+      found.variables.filter(v => v.scope === 'global').forEach(v => {
+        const backendDefault = (v as StudioVariable & { initialValue?: string }).initialValue;
+        globalInit[v.name] = backendDefault && backendDefault !== 'null' && backendDefault !== 'None'
+          ? backendDefault
+          : typeDefault(v.type, v.name);
+      });
+      setGlobalVars(globalInit);
 
       // Pre-fill expected for out params (scalar types only — leave complex blank)
       const exp: Record<string,string> = {};
@@ -438,7 +481,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       return next;
     });
     setLastResult(withDate);
-    // Also save to the global TestCaseStore so the right-panel "Test History" shows it
+    // Also save to global TestCaseStore so the right-panel "Test History" shows it
     saveToHistory({
       id: crypto.randomUUID(),
       subprogramId: subpName,
@@ -532,7 +575,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     const nextIdx = (strategyOrder.indexOf(strategy) + 1) % strategyOrder.length;
     autoFillStrategyRef.current = strategyOrder[nextIdx];
 
-    // Build param_types for BOTH params AND local variables
+    // Build param_types for params + local variables + global variables used
     const param_types: Record<string, string> = {};
     studioSubp.params
       .filter(p => p.dir === 'in' || p.dir === 'in out')
@@ -540,6 +583,10 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     // Include local variables so backend can generate initial values for them too
     studioSubp.variables
       .filter(v => v.scope === 'local')
+      .forEach(v => { param_types[v.name] = v.type; });
+    // Include global variables used by this subprogram
+    studioSubp.variables
+      .filter(v => v.scope === 'global')
       .forEach(v => { param_types[v.name] = v.type; });
 
     try {
@@ -555,20 +602,25 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       });
 
       if (res.values && Object.keys(res.values).length > 0) {
-        // Split returned values between params and local vars
+        // Split returned values between params, local vars, and global vars
         const newInputs: Record<string,string> = { ...inputs };
         const newLocals: Record<string,string> = { ...localVars };
-        const localNames = new Set(studioSubp.variables.filter(v => v.scope === 'local').map(v => v.name.toLowerCase()));
+        const newGlobals: Record<string,string> = { ...globalVars };
+        const localNames  = new Set(studioSubp.variables.filter(v => v.scope === 'local').map(v => v.name.toLowerCase()));
+        const globalNames = new Set(studioSubp.variables.filter(v => v.scope === 'global').map(v => v.name.toLowerCase()));
 
         for (const [k, v] of Object.entries(res.values)) {
           if (localNames.has(k.toLowerCase())) {
             newLocals[k] = v;
+          } else if (globalNames.has(k.toLowerCase())) {
+            newGlobals[k] = v;
           } else {
             newInputs[k] = v;
           }
         }
         setInputs(newInputs);
         setLocalVars(newLocals);
+        setGlobalVars(newGlobals);
         return;
       }
     } catch {
@@ -592,6 +644,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
         nextLocals[v.name] = smartDefault(v.name, v.type, typeConstraint(v.type), strategy);
       });
     setLocalVars(nextLocals);
+
+    // Also fill global variables used by this subprogram
+    const nextGlobals: Record<string,string> = {};
+    studioSubp.variables
+      .filter(v => v.scope === 'global')
+      .forEach(v => {
+        nextGlobals[v.name] = smartDefault(v.name, v.type, typeConstraint(v.type), strategy);
+      });
+    setGlobalVars(nextGlobals);
   };
 
   // Auto-generate test cases for ALL params, even unknown types — called on first load
@@ -607,7 +668,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     if (!studioSubp) return;
     setRunning(true);
 
-    // Build param_types for ALL params AND local variables
+    // Build param_types for ALL params + local variables + global variables
     const param_types: Record<string, string> = {};
     studioSubp.params.forEach(p => {
       param_types[p.name] = p.type;
@@ -616,11 +677,16 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     studioSubp.variables.filter(v => v.scope === 'local').forEach(v => {
       param_types[v.name] = v.type;
     });
+    // Include global variables used by this subprogram
+    studioSubp.variables.filter(v => v.scope === 'global').forEach(v => {
+      param_types[v.name] = v.type;
+    });
 
-    // Merge param inputs + local var initial values into one inputs dict for backend
+    // Merge param inputs + local var initial values + global var values into one dict
     const allInputs: Record<string,string> = {
       ...inputs,
-      ...localVars,   // local variable initial values sent alongside params
+      ...localVars,   // local variable initial values
+      ...globalVars,  // global variable initial values
     };
 
     // Client-side pre-validation for known types (immediate feedback)
@@ -919,10 +985,14 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
               {/* CONSTANTS — shown read-only with their declared value */}
               {studioSubp.variables.filter(v => v.scope === 'constant').length > 0 && <>
                 <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#52525b' }}>
-                  constants
+                  constants — declared values (read-only)
                 </div>
                 <div className="ts-input-grid" style={{ marginBottom: 12 }}>
-                  {studioSubp.variables.filter(v => v.scope === 'constant').map((v, i) => (
+                  {studioSubp.variables.filter(v => v.scope === 'constant').map((v, i) => {
+                    const declaredVal = (v as StudioVariable & { initialValue?: string }).initialValue;
+                    const displayVal = declaredVal && declaredVal !== 'null' && declaredVal !== 'None'
+                      ? declaredVal : typeDefault(v.type, v.name);
+                    return (
                     <div key={i} className="ts-input-card" style={{ borderColor: 'rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.05)' }}>
                       <div className="ts-input-header">
                         <span className="ts-input-dir" style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b', fontSize: 9 }}>const</span>
@@ -930,10 +1000,47 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       </div>
                       <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
                       <input className="ts-input-field ts-mono"
-                        value={typeDefault(v.type, v.name)}
+                        value={displayVal}
                         readOnly
                         style={{ opacity: 0.7, cursor: 'default', borderColor: 'rgba(245,158,11,0.3)' }}
-                        title="Constant — value is fixed at declaration" />
+                        title={`Constant — declared value: ${displayVal}`} />
+                    </div>
+                    );
+                  })}
+                </div>
+              </>}
+
+              {/* GLOBAL VARIABLES — editable initial values for globals used by this subprogram */}
+              {studioSubp.variables.filter(v => v.scope === 'global').length > 0 && <>
+                <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#fbbf24' }}>
+                  global variables — set initial values for test
+                  <span style={{ fontSize: 9, color: '#52525b', marginLeft: 8 }}>
+                    (globals read/written by this subprogram)
+                  </span>
+                </div>
+                <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                  {studioSubp.variables.filter(v => v.scope === 'global').map((v, i) => (
+                    <div key={i} className="ts-input-card"
+                      style={{ borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.03)' }}>
+                      <div className="ts-input-header">
+                        <span className="ts-input-dir" style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', fontSize: 9 }}>global</span>
+                        <span className="ts-input-name">{v.name}</span>
+                      </div>
+                      <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
+                      {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
+                      {v.constraint.kind === 'boolean'
+                        ? <select className="ts-input-field"
+                            value={globalVars[v.name] ?? typeDefault(v.type, v.name)}
+                            onChange={e => setGlobalVars(gv => ({ ...gv, [v.name]: e.target.value }))}>
+                            <option>False</option><option>True</option>
+                          </select>
+                        : <input className="ts-input-field"
+                            type={v.constraint.kind === 'integer' ? 'number' : 'text'}
+                            value={globalVars[v.name] ?? typeDefault(v.type, v.name)}
+                            onChange={e => setGlobalVars(gv => ({ ...gv, [v.name]: e.target.value }))}
+                            placeholder={typeDefault(v.type, v.name)}
+                            title={`Initial value for global variable ${v.name} : ${v.type}`}
+                            min={v.constraint.min} max={v.constraint.max} />}
                     </div>
                   ))}
                 </div>
@@ -954,6 +1061,7 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                 subprogram: studioSubp.name,
                 parameters: inputs,
                 local_variables: localVars,
+                global_variables: globalVars,
                 expected_outputs: expected,
               };
               const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
@@ -1028,30 +1136,110 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       {activeTab === 'variables' && (
         <div style={{ padding: '12px 14px' }}>
           <div className="ts-section-label" style={{ padding: '0 0 8px' }}>
-            variables — declared type vs normalized
+            all variables — type, scope, constraint, initial value
           </div>
+
+          {/* Summary counts */}
+          {studioSubp.variables.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              {(['local','global','constant'] as const).map(scope => {
+                const count = studioSubp.variables.filter(v => v.scope === scope).length;
+                if (count === 0) return null;
+                const colors: Record<string,string> = { local:'#a5b4fc', global:'#fbbf24', constant:'#f59e0b' };
+                return (
+                  <span key={scope} style={{ fontSize: 10, fontFamily: 'monospace', padding: '2px 8px', borderRadius: 4,
+                    background: `rgba(${scope==='local'?'99,102,241':scope==='global'?'251,191,36':'245,158,11'},0.12)`,
+                    color: colors[scope], border: `1px solid rgba(${scope==='local'?'99,102,241':scope==='global'?'251,191,36':'245,158,11'},0.3)` }}>
+                    {count} {scope}
+                  </span>
+                );
+              })}
+              <span style={{ fontSize: 10, fontFamily: 'monospace', padding: '2px 8px', borderRadius: 4,
+                background: 'rgba(255,255,255,0.05)', color: '#71717a', border: '1px solid rgba(255,255,255,0.08)' }}>
+                {studioSubp.variables.length} total
+              </span>
+            </div>
+          )}
+
           {studioSubp.variables.length === 0
-            ? <div style={{ fontSize: 12, color: '#71717a', padding: '8px 0' }}>no variables extracted</div>
+            ? <div style={{ fontSize: 12, color: '#71717a', padding: '8px 0' }}>
+                no variables extracted — analyse the file first with the ⬛ button
+              </div>
             : <table className="ts-vars-table">
                 <thead>
                   <tr>
-                    <th>name</th><th>declared type</th><th>normalized</th><th>scope</th><th>constraint</th>
+                    <th>name</th><th>declared type</th><th>scope</th><th>constraint</th><th>initial</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {studioSubp.variables.map((v,i) => (
+                  {studioSubp.variables.map((v, i) => {
+                    const iv = (v as StudioVariable & { initialValue?: string }).initialValue;
+                    const displayInit = iv && iv !== 'null' && iv !== 'None'
+                      ? iv : typeDefault(v.type, v.name);
+                    const scopeColors: Record<string, string> = {
+                      local: '#a5b4fc', global: '#fbbf24', constant: '#f59e0b'
+                    };
+                    return (
                     <tr key={i}>
-                      <td className="ts-mono">{v.name}</td>
-                      <td className="ts-mono">{v.type} <CaseBadge type={v.type} /></td>
-                      <td className="ts-mono" style={{ color: '#4ade80' }}>{v.type_normalized}</td>
-                      <td><span className={`ts-scope-pill ts-scope-${v.scope}`}>{v.scope}</span></td>
-                      <td className="ts-mono" style={{ fontSize: 11 }}>
-                        {v.constraint.kind==='integer' ? `${v.constraint.min} .. ${v.constraint.max}` : v.constraint.kind||'—'}
+                      <td className="ts-mono" style={{ fontWeight: 600 }}>{v.name}</td>
+                      <td className="ts-mono" style={{ color: '#fb923c' }}>
+                        {v.type} <CaseBadge type={v.type} />
+                      </td>
+                      <td>
+                        <span className={`ts-scope-pill ts-scope-${v.scope}`}
+                          style={{ color: scopeColors[v.scope] }}>
+                          {v.scope}
+                        </span>
+                      </td>
+                      <td className="ts-mono" style={{ fontSize: 10, color: '#71717a' }}>
+                        {v.constraint.kind === 'integer'
+                          ? `${v.constraint.min} .. ${v.constraint.max}`
+                          : v.constraint.kind || '—'}
+                      </td>
+                      <td className="ts-mono" style={{ fontSize: 10, color: '#4ade80' }}>
+                        {displayInit}
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>}
+
+          {/* Params summary */}
+          {studioSubp.params.length > 0 && (
+            <>
+              <div className="ts-section-label" style={{ padding: '12px 0 8px' }}>
+                parameters ({studioSubp.params.length})
+              </div>
+              <table className="ts-vars-table">
+                <thead>
+                  <tr>
+                    <th>name</th><th>type</th><th>mode</th><th>constraint</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studioSubp.params.map((p, i) => (
+                    <tr key={i}>
+                      <td className="ts-mono" style={{ fontWeight: 600 }}>{p.name}</td>
+                      <td className="ts-mono" style={{ color: '#fb923c' }}>{p.type}</td>
+                      <td>
+                        <span style={{ fontSize: 9, fontFamily: 'monospace', padding: '1px 5px', borderRadius: 3,
+                          background: p.dir === 'in' ? 'rgba(96,165,250,0.15)' : p.dir === 'out' ? 'rgba(74,222,128,0.15)' : 'rgba(192,132,252,0.15)',
+                          color: p.dir === 'in' ? '#60a5fa' : p.dir === 'out' ? '#4ade80' : '#c084fc' }}>
+                          {p.dir}
+                        </span>
+                      </td>
+                      <td className="ts-mono" style={{ fontSize: 10, color: '#71717a' }}>
+                        {p.constraint.kind === 'integer'
+                          ? `${p.constraint.min} .. ${p.constraint.max}`
+                          : p.constraint.kind || '—'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-              </table>}
+              </table>
+            </>
+          )}
         </div>
       )}
 
