@@ -26,7 +26,8 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useFileParser } from '../hooks/useFileParser';
 import { loadSession } from '../utils/sessionStorage';
 import { useProjectStore } from '../store/useProjectStore';
-import { downloadHTMLReport, downloadProjectJSON } from '../utils/reportExport';
+import { downloadHTMLReport, downloadProjectJSON, downloadRunReport } from '../utils/reportExport';
+import type { TestRunRecord } from '../utils/reportExport';
 import { mockFiles } from '../mocks/mockFiles';
 import { mockSubprograms } from '../mocks/mockSubprograms';
 import { mockTestCaseSets, mockCurrentTestSets } from '../mocks/mockTestCases';
@@ -215,35 +216,26 @@ const EditorPage: React.FC = () => {
   };
 
   const handleDownloadHistory = () => {
-    // Download all test run history keyed per subprogram
-    const allHistory: Record<string, unknown[]> = {};
+    // Collect all test run history from localStorage (ada_run_history__* keys)
+    const runGroups: Array<{ subprogram: string; runs: TestRunRecord[] }> = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('ada_run_history__')) {
         try {
           const subName = key.replace('ada_run_history__', '');
-          const runs = JSON.parse(localStorage.getItem(key) ?? '[]');
+          const runs = JSON.parse(localStorage.getItem(key) ?? '[]') as TestRunRecord[];
           if (Array.isArray(runs) && runs.length > 0) {
-            allHistory[subName] = runs;
+            runGroups.push({ subprogram: subName, runs });
           }
         } catch { /* skip */ }
       }
     }
-    // Also include generated test sets
-    const combined = {
-      exportedAt: new Date().toISOString(),
-      generatedTestSets: testHistory,
-      runHistory: allHistory,
-      note: 'runHistory shows all actual test executions with inputs, expected, and actual outputs.',
-    };
-    const blob = new Blob([JSON.stringify(combined, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ada_test_history_${Date.now()}.json`;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-    showToast('Test history downloaded', 'success');
+    if (runGroups.length === 0) {
+      showToast('No test runs recorded yet — run some tests first', 'info');
+      return;
+    }
+    downloadRunReport(runGroups, activeProjectName ?? undefined);
+    showToast('Test run report downloaded — open it in a browser and use Print → Save as PDF', 'success', 6000);
   };
 
   return (
@@ -312,7 +304,7 @@ const EditorPage: React.FC = () => {
                 {[
                   { label: '📄 Export HTML Report', action: handleExportReport },
                   { label: '💾 Download Project (.json)', action: handleExportProject },
-                  { label: '🧪 Download Test History', action: handleDownloadHistory },
+                  { label: '🧪 Download Test Runs (PDF)', action: handleDownloadHistory },
                 ].map((item) => (
                   <button key={item.label}
                     onClick={() => { item.action(); setReportOpen(false); }}

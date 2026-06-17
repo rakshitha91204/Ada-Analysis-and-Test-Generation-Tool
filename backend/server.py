@@ -897,77 +897,129 @@ async def api_autofill(request: Request):
         """Generate a smart value for an Ada parameter based on its type and strategy."""
         c = _type_constraint(type_str)
         kind = c.get("kind", "unknown")
+        tl = (type_str or "").lower().strip()
+        pn = (param_name or "").lower().strip()
 
         if kind == "integer":
             lo, hi = c["min"], c["max"]
             if strat == "edge":
-                # Edge: min, max, 0, -1, 1
                 choices = [lo, hi]
                 if lo <= 0 <= hi:  choices.append(0)
                 if lo <= 1 <= hi:  choices.append(1)
                 if lo <= -1 <= hi: choices.append(-1)
                 return str(random.choice(choices))
             elif strat == "boundary":
-                # Boundary: min, min+1, max-1, max
                 choices = [lo, min(lo+1, hi), max(hi-1, lo), hi]
                 return str(random.choice(choices))
             elif strat == "random":
                 return str(random.randint(lo, min(hi, lo + 1000)))
-            else:  # normal
-                # Use a representative mid-range value
+            else:  # normal — representative mid-range
                 mid = (lo + hi) // 2
                 spread = max(1, (hi - lo) // 4)
-                return str(random.randint(
-                    max(lo, mid - spread),
-                    min(hi, mid + spread)
-                ))
+                return str(random.randint(max(lo, mid - spread), min(hi, mid + spread)))
 
         elif kind == "float":
-            if strat == "edge":   return random.choice(["0.0", "1.0", "-1.0", "0.001"])
-            elif strat == "boundary": return random.choice(["-3.4e38", "3.4e38", "0.0", "1.0"])
+            if strat == "edge":       return random.choice(["0.0", "1.0", "-1.0", "0.001"])
+            elif strat == "boundary": return random.choice(["-1.0e10", "1.0e10", "0.0", "1.0"])
             elif strat == "random":   return f"{random.uniform(-100.0, 100.0):.4f}"
             else:                     return f"{random.uniform(0.0, 10.0):.2f}"
 
         elif kind == "boolean":
             if strat == "edge":   return "False"
-            elif strat == "boundary": return random.choice(["True", "False"])
-            else:                     return random.choice(["True", "False"])
+            else:                 return random.choice(["True", "False"])
 
         elif kind == "character":
             if strat == "edge":   return random.choice(["' '", "'A'", "'Z'", "'0'", "'9'"])
-            elif strat == "boundary": return random.choice(["' '", chr(127) if False else "'~'"])
-            else:                     return "'" + random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") + "'"
+            else:                 return "'" + random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") + "'"
 
         elif kind == "string":
             if strat == "edge":   return '""'
             elif strat == "boundary": return '"A"'
             elif strat == "random":
                 length = random.randint(1, 10)
-                s = "".join(random.choice("ABCDEFGabcdefg0123456") for _ in range(length))
-                return '"' + s + '"'
-            else:                     return '"Hello"'
+                return '"' + "".join(random.choice("ABCDEFGabcdefg0123456") for _ in range(length)) + '"'
+            else:                 return '"Hello"'
 
         else:
-            # Unknown type — try to detect from name hints
-            tl = type_str.lower()
-            pn = param_name.lower()
-            if "font" in tl or "font" in pn:     return "Default_Font"
-            if "color" in tl or "color" in pn:   return "0"
-            if "buffer" in tl or "buf" in pn:    return "Default_Buffer"
-            if "point" in tl or "pos" in pn:     return "(0, 0)"
-            if "width" in tl or "height" in tl:  return "1"
-            if "size" in tl or "len" in pn:       return "1"
-            if "index" in pn or "idx" in pn:      return "1"
-            if "count" in pn or "num" in pn:      return "1"
-            return "0"
+            # Unknown / complex Ada types — use BOTH type name AND parameter name heuristics
+            # Priority: type name → parameter name → generic fallback
+            if "bitmap_buffer" in tl or "buffer'class" in tl or "buf" in pn or "buffer" in pn:
+                return "Buffer"
+            if "bitmap_color" in tl or ("color" in tl and "mode" not in tl):
+                if strat == "edge": return "(Red => 0, Green => 0, Blue => 0, Alpha => 0)"
+                return f"(Red => {random.randint(0,255)}, Green => {random.randint(0,255)}, Blue => {random.randint(0,255)}, Alpha => 255)"
+            if "color_mode" in tl:  return "ARGB_8888"
+            if "bmp_font" in tl or "font" in tl or "font" in pn:  return "Default_Font"
+            if "point" in tl or pn in ("start", "pos", "origin") or "origin" in pn or "position" in pn:
+                if strat == "edge": return "(X => 0, Y => 0)"
+                return f"(X => {random.randint(0, 200)}, Y => {random.randint(0, 200)})"
+            if "bitmap" in tl or "bitmap" in pn:  return "Buffer"
+            if "natural" in tl or "positive" in tl:
+                lo, hi = (0, 2147483647) if "natural" in tl else (1, 2147483647)
+                if strat == "edge":       return str(lo)
+                elif strat == "boundary": return str(random.choice([lo, lo+1, hi-1, hi]))
+                elif strat == "random":   return str(random.randint(lo, min(hi, 1000)))
+                else:                     return str(random.randint(1, 100))
+            if "uint16" in tl:
+                if strat == "edge":       return random.choice(["0", "65535"])
+                elif strat == "boundary": return random.choice(["0", "1", "65534", "65535"])
+                elif strat == "random":   return str(random.randint(0, 65535))
+                else:                     return str(random.randint(0, 256))
+            if "uint32" in tl or "word" in tl:
+                if strat == "edge":       return random.choice(["0", "4294967295"])
+                elif strat == "random":   return str(random.randint(0, 65535))
+                else:                     return str(random.randint(0, 1000))
+            if "uint8" in tl or "byte" in tl:
+                if strat == "edge":       return random.choice(["0", "255"])
+                elif strat == "boundary": return random.choice(["0", "1", "254", "255"])
+                elif strat == "random":   return str(random.randint(0, 255))
+                else:                     return str(random.randint(0, 128))
+            if "integer" in tl:
+                if strat == "edge":       return random.choice(["0", "-1", "1", "-2147483648", "2147483647"])
+                elif strat == "boundary": return random.choice(["0", "1", "-1", "2147483647"])
+                elif strat == "random":   return str(random.randint(-1000, 1000))
+                else:                     return str(random.randint(-50, 50))
+            if "float" in tl or "double" in tl:
+                if strat == "edge":   return "0.0"
+                elif strat == "random": return f"{random.uniform(-100.0, 100.0):.4f}"
+                else:                   return f"{random.uniform(0.0, 10.0):.2f}"
+            if "boolean" in tl:
+                return "False" if strat == "edge" else random.choice(["True", "False"])
+            if "character" in tl or "char" in pn:
+                return "' '" if strat == "edge" else "'" + random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + "'"
+            if "string" in tl or "msg" in pn or "str" in pn or "text" in pn:
+                return '""' if strat == "edge" else '"Hello"'
+            # Name-based heuristics for remaining unknowns
+            if "width" in pn or "height" in pn:      return "0" if strat == "edge" else str(random.randint(1, 200))
+            if "row" in pn:                           return "0" if strat == "edge" else str(random.randint(0, 100))
+            if "col" in pn:                           return "0" if strat == "edge" else str(random.randint(0, 100))
+            if pn in ("x", "x_pos"):                  return "0" if strat == "edge" else str(random.randint(0, 400))
+            if pn in ("y", "y_pos"):                  return "0" if strat == "edge" else str(random.randint(0, 300))
+            if "count" in pn or "num" in pn or "len" in pn: return "0" if strat == "edge" else str(random.randint(1, 20))
+            if "index" in pn or "idx" in pn:          return "1" if strat == "edge" else str(random.randint(1, 10))
+            if "offset" in pn:                        return "0" if strat == "edge" else str(random.randint(0, 50))
+            if "size" in pn:                          return "0" if strat == "edge" else str(random.randint(1, 100))
+            if "flag" in pn or "enable" in pn or "ok" in pn: return "False" if strat == "edge" else random.choice(["True", "False"])
+            if "foreground" in pn or "fg" in pn:      return "0" if strat == "edge" else str(random.randint(0, 0xFFFFFF))
+            if "background" in pn or "bg" in pn:      return "0" if strat == "edge" else str(random.randint(0, 0xFFFFFF))
+            # Specific names from bitmapped_drawing test files
+            if "orida" in pn or "aran" in pn or "karan" in pn:
+                return "0" if strat == "edge" else str(random.randint(0, 255))
+            return "0" if strat == "edge" else "1"
 
-    # Build values for all strategies
+    # Build values for all strategies — includes params AND variables (locals/globals)
     strategies_out = {}
     for strat in ["normal", "edge", "boundary", "random"]:
         values: dict[str, str] = {}
+        # Parameters (in / in out directions)
         for p in subp.get("params", []):
             if p["dir"] in ("in", "in out"):
                 values[p["name"]] = smart_value(p["name"], p["type"], strat)
+        # Variables (locals and globals) — give them initial values too
+        for v in subp.get("variables", []):
+            scope = v.get("scope", "local")
+            if scope in ("local", "global"):
+                values[v["name"]] = smart_value(v["name"], v["type"], strat)
         strategies_out[strat] = values
 
     # Return the requested strategy as primary, others as alternatives
