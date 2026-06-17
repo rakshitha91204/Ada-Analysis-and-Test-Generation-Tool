@@ -1159,26 +1159,31 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
             </>
           )}
 
-          {/* Buttons */}
+          {/* Buttons — always show Run Test; show auto-fill and export when there are any inputs */}
           <div className="ts-btn-row" style={{ paddingLeft: 0, paddingRight: 0 }}>
             <button className="ts-btn ts-btn-primary" onClick={runTest} disabled={running}>
               ▶ {running ? 'running...' : 'run test'}
             </button>
-            {!hasNoParams && <button className="ts-btn" onClick={autoGen}>
-              ✨ auto-fill <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>({autoFillStrategyRef.current})</span>
-            </button>}
-            {!hasNoParams && <button className="ts-btn" onClick={() => {
-              const exportData = {
-                subprogram: studioSubp.name,
-                parameters: inputs,
-                local_variables: localVars,
-                global_variables: globalVars,
-                expected_outputs: expected,
-              };
-              const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
-              const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-              a.download = `${studioSubp.name}_inputs.json`; a.click();
-            }}>⬇ export inputs</button>}
+            {/* Show auto-fill if there are params OR local/global variables */}
+            {(inParams.length > 0 || studioSubp.variables.filter(v => v.scope === 'local' || v.scope === 'global').length > 0) && (
+              <button className="ts-btn" onClick={autoGen}>
+                ✨ auto-fill <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>({autoFillStrategyRef.current})</span>
+              </button>
+            )}
+            {(inParams.length > 0 || studioSubp.variables.filter(v => v.scope === 'local' || v.scope === 'global').length > 0) && (
+              <button className="ts-btn" onClick={() => {
+                const exportData = {
+                  subprogram: studioSubp.name,
+                  parameters: inputs,
+                  local_variables: localVars,
+                  global_variables: globalVars,
+                  expected_outputs: expected,
+                };
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                a.download = `${studioSubp.name}_inputs.json`; a.click();
+              }}>⬇ export inputs</button>
+            )}
           </div>
 
           {/* Result box — with explanation */}
@@ -1305,7 +1310,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       <td className="ts-mono" style={{ fontSize: 10, color: '#71717a' }}>
                         {v.constraint.kind === 'integer'
                           ? `${v.constraint.min} .. ${v.constraint.max}`
-                          : v.constraint.kind || '—'}
+                          : v.constraint.kind === 'float'
+                          ? 'float'
+                          : v.constraint.kind === 'boolean'
+                          ? 'True | False'
+                          : v.constraint.kind === 'character'
+                          ? "format: 'A'"
+                          : v.constraint.kind === 'string'
+                          ? 'format: "text"'
+                          : typeLabel(v.type) || v.type.split(/\s+/)[0] || 'record/composite'}
                       </td>
                       <td className="ts-mono" style={{ fontSize: 10, color: '#4ade80' }}>
                         {displayInit}
@@ -1343,7 +1356,15 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                       <td className="ts-mono" style={{ fontSize: 10, color: '#71717a' }}>
                         {p.constraint.kind === 'integer'
                           ? `${p.constraint.min} .. ${p.constraint.max}`
-                          : p.constraint.kind || '—'}
+                          : p.constraint.kind === 'float'
+                          ? 'float'
+                          : p.constraint.kind === 'boolean'
+                          ? 'True | False'
+                          : p.constraint.kind === 'character'
+                          ? "format: 'A'"
+                          : p.constraint.kind === 'string'
+                          ? 'format: "text"'
+                          : typeLabel(p.type) || p.type.split(/\s+/)[0] || 'record/composite'}
                       </td>
                     </tr>
                   ))}
