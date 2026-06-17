@@ -70,8 +70,41 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
 
   // ── Variables summary (new schema + legacy fallback) ──────────────────────
   const filePath = analysis?.file_paths?.[0] ?? '';
+  // Try both the stored path and the basename as key
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const varFileInfo: any = analysis?.variables_info?.[filePath] ?? {};
+  const varInfoMap: any = analysis?.variables_info ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const varFileInfo: any = varInfoMap[filePath]
+    ?? varInfoMap[filePath.split(/[/\\]/).pop() ?? filePath]
+    ?? Object.values(varInfoMap)[0]
+    ?? {};
+
+  /** Resolve a display type — replace 'Unknown' with a name-based hint */
+  const resolveDisplayType = (type: string, name: string): string => {
+    if (!type || type === 'Unknown' || type === 'unknown') {
+      const n = (name || '').toLowerCase();
+      if (n.includes('font'))        return 'Font (record)';
+      if (n.includes('color'))       return 'Color (record)';
+      if (n.includes('point') || n.includes('coord') || n === 'current' || n === 'start' || n === 'pos')
+        return 'Point (record)';
+      if (n.includes('rect') || n.includes('area') || n.includes('bounds'))
+        return 'Rect (record)';
+      if (n.includes('buffer') || n.includes('buf'))
+        return 'Buffer (class)';
+      if (n.includes('glyph'))       return 'Glyph (record)';
+      if (n.includes('bitmap'))      return 'Bitmap (record)';
+      if (n.includes('mode'))        return 'Mode (enum)';
+      if (n.includes('str') || n.includes('msg') || n.includes('text'))
+        return 'String';
+      if (n === 'c' || n.includes('char')) return 'Character';
+      if (n.includes('flag') || n.includes('bold') || n.includes('outline') || n.includes('first'))
+        return 'Boolean';
+      if (n.includes('idx') || n.includes('index') || n.includes('count') || n.includes('num'))
+        return 'Natural (integer)';
+      return `${type || 'unknown'} (Ada type)`;
+    }
+    return type;
+  };
   // New schema
   const varGlobals: Array<{ name: string; type: string; line: number; is_constant: boolean }> =
     varFileInfo.globals ?? [];
@@ -549,7 +582,11 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
                 className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
                 <ChevronRight size={9} className="text-zinc-500 flex-shrink-0" />
                 <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
-                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate"
+                  style={{ color: v.type === 'Unknown' || v.type === 'unknown' ? '#52525b' : undefined }}
+                  title={v.type}>
+                  {resolveDisplayType(v.type, v.name)}
+                </span>
                 <span className="text-[9px] font-mono text-zinc-600">{v.subprogram}</span>
                 {v.line > 0 && <span className="text-[9px] font-mono text-zinc-700">:{v.line}</span>}
               </div>
@@ -560,7 +597,11 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
                 className="flex items-center gap-2 py-1 px-1 rounded hover:bg-zinc-700/30 cursor-pointer transition-colors">
                 <ChevronRight size={9} className={`flex-shrink-0 ${v.is_constant ? 'text-green-500' : 'text-amber-500'}`} />
                 <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
-                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate"
+                  style={{ color: v.type === 'Unknown' || v.type === 'unknown' ? '#52525b' : undefined }}
+                  title={v.type}>
+                  {resolveDisplayType(v.type, v.name)}
+                </span>
                 {v.is_constant && (
                   <span className="text-[8px] font-mono px-1 rounded"
                     style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}>const</span>
@@ -576,7 +617,11 @@ export const AnalysisOutput: React.FC<AnalysisOutputProps> = ({ compact = false 
                 <span className="text-[10px] font-mono text-zinc-300 font-semibold">{v.name}</span>
                 <span className="text-[9px] font-mono text-blue-400 px-1 rounded"
                   style={{ background: 'rgba(96,165,250,0.1)' }}>{v.mode}</span>
-                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate">{v.type}</span>
+                <span className="text-[9px] font-mono text-zinc-500 flex-1 truncate"
+                  style={{ color: v.type === 'Unknown' || v.type === 'unknown' ? '#52525b' : undefined }}
+                  title={v.type}>
+                  {resolveDisplayType(v.type, v.name)}
+                </span>
                 <span className="text-[9px] font-mono text-zinc-600">{v.subprogram}</span>
               </div>
             ))}
