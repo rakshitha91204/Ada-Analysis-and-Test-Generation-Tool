@@ -76,7 +76,7 @@ interface TestRunResult {
 // ── Build StudioSubprogram from local analysis result (no extra API call) ─────
 function typeConstraint(type: string): TypeConstraint {
   const tl = (type||'').toLowerCase().trim()
-    .replace(/[''']/g, "'")   // normalise apostrophes
+    .replace(/[''']/g, "'")
     .replace(/\s+/g, ' ');
   if (tl.includes('uint32') || tl.includes('word'))  return { kind:'integer', min:0, max:4294967295 };
   if (tl.includes('uint16'))                          return { kind:'integer', min:0, max:65535 };
@@ -84,12 +84,17 @@ function typeConstraint(type: string): TypeConstraint {
   if (tl.includes('positive'))                        return { kind:'integer', min:1, max:2147483647 };
   if (tl.includes('natural'))                         return { kind:'integer', min:0, max:2147483647 };
   if (tl.includes('long_integer'))                    return { kind:'integer', min:-2147483648, max:2147483647 };
+  if (tl.includes('integer_8'))                       return { kind:'integer', min:-128, max:127 };
+  if (tl.includes('integer_16'))                      return { kind:'integer', min:-32768, max:32767 };
   if (tl.includes('integer'))                         return { kind:'integer', min:-2147483648, max:2147483647 };
   if (tl.includes('long_float') || tl.includes('double')) return { kind:'float', min:-1e38, max:1e38 };
   if (tl.includes('float'))                           return { kind:'float', min:-1e38, max:1e38 };
   if (tl.includes('boolean'))                         return { kind:'boolean', values:['True','False'] };
   if (tl === 'character' || tl.startsWith('character ')) return { kind:'character' };
   if (tl.includes('string'))                          return { kind:'string' };
+  // Common Ada custom types that map to integers
+  if (tl.includes('glyph_index') || tl.includes('index')) return { kind:'integer', min:0, max:2147483647 };
+  if (tl.includes('count'))                           return { kind:'integer', min:0, max:2147483647 };
   return { kind:'unknown' };
 }
 
@@ -250,37 +255,54 @@ function typeDefault(type: string, paramName = ''): string {
   if (tl.includes('float') || tl.includes('double')) return '0.0';
   if (tl === 'character' || tl.startsWith('character ')) return "'A'";
   if (tl.includes('string'))    return '"Hello"';
-  // integers — pick a mid-range safe default
+  // integers — pick a safe default
   if (tl.includes('uint32') || tl.includes('word'))  return '100';
   if (tl.includes('uint16'))                          return '100';
   if (tl.includes('uint8') || tl.includes('byte'))   return '10';
+  if (tl.includes('integer_8'))                       return '0';
+  if (tl.includes('integer_16'))                      return '0';
   if (tl.includes('positive'))                        return '1';
   if (tl.includes('natural'))                         return '0';
   if (tl.includes('integer'))                         return '0';
-  // Ada-specific complex types — infer from type name + param name
+  // Ada record / composite types — infer from type name + param name
   if (tl.includes("bitmap_buffer") || tl.includes("buffer'class") || pl.includes('buffer') || pl.includes('buf'))
     return 'Buffer';
-  if (tl.includes('bitmap_color') || (tl.includes('color') && !tl.includes('mode')))
+  if (tl.includes('bitmap_color'))
+    return '(Red => 255, Green => 0, Blue => 0, Alpha => 255)';
+  if (tl.includes('color') && !tl.includes('mode') && !tl.includes('bitmap'))
     return '(Red => 255, Green => 0, Blue => 0, Alpha => 255)';
   if (tl.includes('color_mode'))  return 'ARGB_8888';
-  if (tl.includes('bmp_font') || tl.includes('font'))  return 'Default_Font';
-  if (tl.includes('point') || pl === 'start' || pl === 'pos' || pl.includes('origin'))
+  if (tl.includes('bmp_font') || tl.includes('hershey_font') || tl.includes('font_desc') || tl.includes('font'))
+    return 'Default_Font';
+  if (tl.includes('rect') || pl.includes('rect') || pl.includes('area'))
+    return '(X => 0, Y => 0, Width => 10, Height => 10)';
+  if (tl.includes('coord') || (tl.includes('point') && !tl.includes('pointer')))
+    return '(X => 0, Y => 0)';
+  if (pl === 'start' || pl === 'pos' || pl.includes('origin') || pl.includes('position'))
     return '(X => 0, Y => 0)';
   if (tl.includes('bitmap') || pl.includes('bitmap'))   return 'Buffer';
-  if (pl.includes('char'))     return "'A'";
+  if (tl.includes('glyph') && !tl.includes('index'))    return 'Default_Glyph';
+  if (tl.includes('glyph_index') || (tl.includes('index') && !tl.includes('string')))
+    return '0';
+  // Name-based heuristics
+  if (pl.includes('char') && !pl.includes('character')) return "'A'";
   if (pl.includes('msg') || pl.includes('str') || pl.includes('text')) return '"Hello"';
-  if (pl.includes('width') || pl.includes('w'))   return '10';
-  if (pl.includes('height') || pl.includes('h'))  return '10';
+  if (pl.includes('width') || pl === 'w')   return '10';
+  if (pl.includes('height') || pl === 'h')  return '10';
   if (pl.includes('row'))      return '1';
   if (pl.includes('col'))      return '1';
-  if (pl.includes('x'))        return '0';
-  if (pl.includes('y'))        return '0';
+  if (pl === 'x' || pl.includes('x_pos'))   return '0';
+  if (pl === 'y' || pl.includes('y_pos'))   return '0';
   if (pl.includes('count') || pl.includes('num') || pl.includes('len')) return '1';
   if (pl.includes('index') || pl.includes('idx'))  return '1';
   if (pl.includes('offset'))   return '0';
   if (pl.includes('size'))     return '1';
-  if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok')) return 'False';
+  if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok') || pl.includes('bold') || pl.includes('first') || pl.includes('outline')) return 'False';
   if (pl.includes('orida') || pl.includes('aran') || pl.includes('karan')) return '0';
+  if (pl.includes('foreground') || pl.includes('bg') || pl.includes('fg') || pl.includes('background'))
+    return '16#FFFFFF#';
+  if (pl.includes('ratio') || pl === 'scale') return '1.0';
+  if (pl.includes('thickness')) return '1';
   return '0';
 }
 
@@ -291,16 +313,22 @@ function typeLabel(type: string): string {
   if (tl.includes('uint8') || tl.includes('byte'))   return '0 .. 255';
   if (tl.includes('positive')) return '1 .. 2147483647';
   if (tl.includes('natural'))  return '0 .. 2147483647';
+  if (tl.includes('integer_8'))  return '-128 .. 127';
+  if (tl.includes('integer_16')) return '-32768 .. 32767';
   if (tl.includes('integer'))  return '-2147483648 .. 2147483647';
   if (tl.includes('float') || tl.includes('double')) return 'float';
   if (tl.includes('bool'))     return 'True | False';
   if (tl === 'character' || tl.startsWith('character ')) return "format: 'A'";
   if (tl.includes('string'))   return 'format: "text"';
-  if (tl.includes('point'))    return '(X => 0, Y => 0)';
+  // Common Ada record/composite types — show format hint
+  if (tl.includes('point') || tl.includes('coord')) return '(X => 0, Y => 0)';
+  if (tl.includes('rect'))     return '(X => 0, Y => 0, Width => 1, Height => 1)';
   if (tl.includes('bitmap_color')) return '(Red,Green,Blue,Alpha => 0..255)';
   if (tl.includes('color_mode'))   return 'ARGB_8888 | RGB_888 | ...';
-  if (tl.includes('bmp_font') || tl.includes('font')) return 'Default_Font | font name';
-  if (tl.includes('bitmap_buffer') || tl.includes("buffer'class")) return 'Buffer object (in out)';
+  if (tl.includes('bmp_font') || tl.includes('hershey_font') || tl.includes('font_desc') || tl.includes('font')) return 'font name / Default_Font';
+  if (tl.includes('bitmap_buffer') || tl.includes("buffer'class") || tl.includes('buffer')) return 'Buffer object (in out)';
+  if (tl.includes('glyph'))    return 'glyph / Default_Glyph';
+  if (tl.includes('index'))    return '0 .. max';
   return '';
 }
 function CaseBadge({ type }: { type: string }) {
@@ -535,32 +563,39 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
     // Unknown/complex Ada types — infer from type name + parameter name
     if (tl.includes("bitmap_buffer") || tl.includes("buffer'class") || pl.includes('buffer') || pl.includes('buf'))
       return 'Buffer';
-    if (tl.includes('bitmap_color') || (tl.includes('color') && !tl.includes('mode')))
-      return strategy === 'edge'
-        ? '(Red => 0, Green => 0, Blue => 0, Alpha => 0)'
-        : '(Red => 255, Green => 0, Blue => 0, Alpha => 255)';
+    if (tl.includes('bitmap_color'))
+      return strategy === 'edge' ? '(Red => 0, Green => 0, Blue => 0, Alpha => 0)' : `(Red => ${Math.floor(Math.random()*255)}, Green => ${Math.floor(Math.random()*255)}, Blue => ${Math.floor(Math.random()*255)}, Alpha => 255)`;
+    if (tl.includes('color') && !tl.includes('mode') && !tl.includes('bitmap'))
+      return strategy === 'edge' ? '(Red => 0, Green => 0, Blue => 0, Alpha => 0)' : `(Red => ${Math.floor(Math.random()*255)}, Green => ${Math.floor(Math.random()*255)}, Blue => ${Math.floor(Math.random()*255)}, Alpha => 255)`;
     if (tl.includes('color_mode'))  return 'ARGB_8888';
-    if (tl.includes('bmp_font') || tl.includes('font') || pl.includes('font'))
+    if (tl.includes('bmp_font') || tl.includes('hershey_font') || tl.includes('font_desc') || tl.includes('font') || pl.includes('font'))
       return 'Default_Font';
-    if (tl.includes('point') || pl === 'start' || pl === 'pos' || pl.includes('origin'))
-      return strategy === 'edge' ? '(X => 0, Y => 0)' : `(X => ${Math.floor(Math.random()*100)}, Y => ${Math.floor(Math.random()*100)})`;
+    if (tl.includes('rect') || pl.includes('rect') || pl.includes('area'))
+      return strategy === 'edge' ? '(X => 0, Y => 0, Width => 0, Height => 0)' : `(X => ${Math.floor(Math.random()*100)}, Y => ${Math.floor(Math.random()*100)}, Width => ${1+Math.floor(Math.random()*100)}, Height => ${1+Math.floor(Math.random()*100)})`;
+    if (tl.includes('coord') || (tl.includes('point') && !tl.includes('pointer')))
+      return strategy === 'edge' ? '(X => 0, Y => 0)' : `(X => ${Math.floor(Math.random()*200)}, Y => ${Math.floor(Math.random()*200)})`;
+    if (pl === 'start' || pl === 'pos' || pl.includes('origin') || pl.includes('position'))
+      return strategy === 'edge' ? '(X => 0, Y => 0)' : `(X => ${Math.floor(Math.random()*200)}, Y => ${Math.floor(Math.random()*200)})`;
     if (tl.includes('bitmap') || pl.includes('bitmap'))   return 'Buffer';
+    if (tl.includes('glyph') && !tl.includes('index'))    return 'Default_Glyph';
+    if (tl.includes('glyph_index'))  return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*100));
     if (pl.includes('msg') || pl.includes('str') || pl.includes('text'))
       return strategy === 'edge' ? '""' : '"Hello"';
     if (pl.includes('char'))     return strategy === 'edge' ? "' '" : "'A'";
-    if (pl.includes('width') || pl.includes('w'))   return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
-    if (pl.includes('height') || pl.includes('h'))  return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
+    if (pl.includes('width') || pl === 'w')   return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
+    if (pl.includes('height') || pl === 'h')  return strategy === 'edge' ? '0' : String(1 + Math.floor(Math.random()*100));
     if (pl.includes('row'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*10));
     if (pl.includes('col'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*10));
-    if (pl.includes('x'))     return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
-    if (pl.includes('y'))     return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
+    if (pl === 'x' || pl.includes('x_pos')) return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
+    if (pl === 'y' || pl.includes('y_pos')) return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*200));
     if (pl.includes('count') || pl.includes('num') || pl.includes('len')) return strategy === 'edge' ? '0' : '5';
     if (pl.includes('index') || pl.includes('idx'))  return strategy === 'edge' ? '1' : String(1 + Math.floor(Math.random()*10));
     if (pl.includes('offset'))   return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*50));
     if (pl.includes('size'))     return strategy === 'edge' ? '0' : '10';
-    if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok'))
+    if (pl.includes('thickness')) return strategy === 'edge' ? '1' : String(1 + Math.floor(Math.random()*5));
+    if (pl.includes('ratio') || pl === 'scale') return strategy === 'edge' ? '0.0' : (Math.random()*2).toFixed(2);
+    if (pl.includes('flag') || pl.includes('enable') || pl.includes('ok') || pl.includes('bold') || pl.includes('first') || pl.includes('outline'))
       return strategy === 'edge' ? 'False' : (Math.random() > 0.5 ? 'True' : 'False');
-    // UINT16/UINT32 range names from bitmapped_drawing
     if (pl.includes('orida') || pl.includes('aran') || pl.includes('karan'))
       return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*256));
     if (pl.includes('foreground') || pl.includes('background') || pl.includes('fg') || pl.includes('bg'))
@@ -866,15 +901,91 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       {activeTab === 'inputs' && (
         <div style={{ padding: '12px 14px' }}>
           {hasNoParams ? (
-            <div style={{ padding: '8px 0 12px', fontSize: 12, color: '#71717a', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16 }}>⚡</span>
-              <span>
-                <strong style={{ color: '#a1a1aa' }}>{studioSubp.name}</strong> has no parameters.
-                {studioSubp.variables.length > 0
-                  ? <> See the <button onClick={() => setActiveTab('variables')} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>variables tab</button> for declared variables.</>
-                  : ' This is a parameterless procedure — click Run Test to execute it.'}
-              </span>
-            </div>
+            // No declared parameters — but may have local/global variables that act as initial state
+            studioSubp.variables.filter(v => v.scope === 'local' || v.scope === 'global').length > 0 ? (
+              <>
+                <div style={{ padding: '4px 0 10px', fontSize: 11, color: '#71717a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 14 }}>⚡</span>
+                  <span>
+                    <strong style={{ color: '#a1a1aa' }}>{studioSubp.name}</strong> has no declared parameters.
+                    Set initial values for its variables below.
+                  </span>
+                </div>
+
+                {/* Local variables as editable inputs */}
+                {studioSubp.variables.filter(v => v.scope === 'local').length > 0 && <>
+                  <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#a5b4fc' }}>
+                    local variables — set initial values for test
+                    <span style={{ fontSize: 9, color: '#52525b', marginLeft: 8 }}>(initial state before procedure runs)</span>
+                  </div>
+                  <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                    {studioSubp.variables.filter(v => v.scope === 'local').map((v, i) => (
+                      <div key={i} className="ts-input-card"
+                        style={{ borderColor: 'rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.04)' }}>
+                        <div className="ts-input-header">
+                          <span className="ts-input-dir" style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 9 }}>local</span>
+                          <span className="ts-input-name">{v.name}</span>
+                        </div>
+                        <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
+                        {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
+                        {v.constraint.kind === 'boolean'
+                          ? <select className="ts-input-field"
+                              value={localVars[v.name] ?? typeDefault(v.type, v.name)}
+                              onChange={e => setLocalVars(lv => ({ ...lv, [v.name]: e.target.value }))}>
+                              <option>False</option><option>True</option>
+                            </select>
+                          : <input className="ts-input-field"
+                              type={v.constraint.kind === 'integer' ? 'number' : 'text'}
+                              value={localVars[v.name] ?? typeDefault(v.type, v.name)}
+                              onChange={e => setLocalVars(lv => ({ ...lv, [v.name]: e.target.value }))}
+                              placeholder={typeDefault(v.type, v.name)}
+                              min={v.constraint.min} max={v.constraint.max} />}
+                      </div>
+                    ))}
+                  </div>
+                </>}
+
+                {/* Global variables as editable inputs */}
+                {studioSubp.variables.filter(v => v.scope === 'global').length > 0 && <>
+                  <div className="ts-section-label" style={{ padding: '0 0 8px', color: '#fbbf24' }}>
+                    global variables — set initial values for test
+                  </div>
+                  <div className="ts-input-grid" style={{ marginBottom: 12 }}>
+                    {studioSubp.variables.filter(v => v.scope === 'global').map((v, i) => (
+                      <div key={i} className="ts-input-card"
+                        style={{ borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.03)' }}>
+                        <div className="ts-input-header">
+                          <span className="ts-input-dir" style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', fontSize: 9 }}>global</span>
+                          <span className="ts-input-name">{v.name}</span>
+                        </div>
+                        <div className="ts-input-type ts-mono">{v.type} <CaseBadge type={v.type} /></div>
+                        {typeLabel(v.type) && <div className="ts-input-range">{typeLabel(v.type)}</div>}
+                        {v.constraint.kind === 'boolean'
+                          ? <select className="ts-input-field"
+                              value={globalVars[v.name] ?? typeDefault(v.type, v.name)}
+                              onChange={e => setGlobalVars(gv => ({ ...gv, [v.name]: e.target.value }))}>
+                              <option>False</option><option>True</option>
+                            </select>
+                          : <input className="ts-input-field"
+                              type={v.constraint.kind === 'integer' ? 'number' : 'text'}
+                              value={globalVars[v.name] ?? typeDefault(v.type, v.name)}
+                              onChange={e => setGlobalVars(gv => ({ ...gv, [v.name]: e.target.value }))}
+                              placeholder={typeDefault(v.type, v.name)}
+                              min={v.constraint.min} max={v.constraint.max} />}
+                      </div>
+                    ))}
+                  </div>
+                </>}
+              </>
+            ) : (
+              <div style={{ padding: '8px 0 12px', fontSize: 12, color: '#71717a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚡</span>
+                <span>
+                  <strong style={{ color: '#a1a1aa' }}>{studioSubp.name}</strong> has no parameters or variables.
+                  This is a parameterless procedure — click Run Test to execute it.
+                </span>
+              </div>
+            )
           ) : (
             <>
               {/* IN PARAMETERS */}
