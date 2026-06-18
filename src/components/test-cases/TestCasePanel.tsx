@@ -68,6 +68,7 @@ interface TestRunResult {
   status: 'pass'|'fail'|'error'; message: string;
   explanation?: string;
   actual: Record<string,string>; elapsed_ms: number;
+  inputs_echo?: Record<string,string>; // backend echoes inputs back for display
   violations?: Array<{variable:string;type:string;value:string;error:string}>;
   normalized_types?: Record<string,string>;
   inputs: Record<string,string>; expected: Record<string,string>;
@@ -75,9 +76,25 @@ interface TestRunResult {
 
 // ── Build StudioSubprogram from local analysis result (no extra API call) ─────
 function typeConstraint(type: string): TypeConstraint {
-  const tl = (type||'').toLowerCase().trim()
-    .replace(/[''']/g, "'")
-    .replace(/\s+/g, ' ');
+  const raw = (type||'').trim().replace(/[''']/g, "'").replace(/\s+/g, ' ');
+  const tl = raw.toLowerCase()
+    // Strip package prefix ONLY for simple dotted names (no spaces): "Standard.Integer" → "integer"
+    .replace(/^[a-z_]\w*\.(?=[a-z_])/i, '');
+
+  // Handle libadalang range constraints: "Integer range 0 .. 100"
+  const rangeM = /^(\w+)\s+range\s+(-?\d+)\s*\.\.\s*(-?\d+)/i.exec(tl);
+  if (rangeM) {
+    const base = rangeM[1], lo = parseInt(rangeM[2]), hi = parseInt(rangeM[3]);
+    if (/integer|natural|positive|count|index|size/.test(base))
+      return { kind: 'integer', min: lo, max: hi };
+    if (/float|double/.test(base))
+      return { kind: 'float', min: lo, max: hi };
+  }
+
+  // Modular types: "mod 256" or "SomeType mod 256"
+  const modM = /mod\s+(\d+)/i.exec(tl);
+  if (modM) return { kind: 'integer', min: 0, max: parseInt(modM[1]) - 1 };
+
   if (tl.includes('uint32') || tl.includes('word'))  return { kind:'integer', min:0, max:4294967295 };
   if (tl.includes('uint16'))                          return { kind:'integer', min:0, max:65535 };
   if (tl.includes('uint8')  || tl.includes('byte'))  return { kind:'integer', min:0, max:255 };
@@ -91,10 +108,11 @@ function typeConstraint(type: string): TypeConstraint {
   if (tl.includes('float'))                           return { kind:'float', min:-1e38, max:1e38 };
   if (tl.includes('boolean'))                         return { kind:'boolean', values:['True','False'] };
   if (tl === 'character' || tl.startsWith('character ')) return { kind:'character' };
-  if (tl.includes('string'))                          return { kind:'string' };
-  // Common Ada custom types that map to integers
+  if (tl.includes('string') || tl.includes('unbounded')) return { kind:'string' };
+  // Common Ada index/count subtypes
   if (tl.includes('glyph_index') || tl.includes('index')) return { kind:'integer', min:0, max:2147483647 };
-  if (tl.includes('count'))                           return { kind:'integer', min:0, max:2147483647 };
+  if (tl.includes('count') || tl.includes('size') || tl.includes('length'))
+                                                       return { kind:'integer', min:0, max:2147483647 };
   return { kind:'unknown' };
 }
 
@@ -303,7 +321,8 @@ function typeDefault(type: string, paramName = ''): string {
     return '16#FFFFFF#';
   if (pl.includes('ratio') || pl === 'scale') return '1.0';
   if (pl.includes('thickness')) return '1';
-  return '0';
+  // Unknown type: return a non-trivial default so fields don't all read "0"
+  return '42';
 }
 
 function typeLabel(type: string): string {
@@ -600,7 +619,14 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
       return strategy === 'edge' ? '0' : String(Math.floor(Math.random()*256));
     if (pl.includes('foreground') || pl.includes('background') || pl.includes('fg') || pl.includes('bg'))
       return strategy === 'edge' ? '0' : String(Math.floor(Math.random() * 0xFFFFFF));
-    return strategy === 'edge' ? '0' : '1';
+
+    // Last-resort fallback for truly unknown types — treat as a generic integer
+    // and return a strategy-appropriate value rather than always 0 or 1
+    if (strategy === 'edge')     return String(Math.random() > 0.5 ? 0 : 255);
+    if (strategy === 'boundary') return String(Math.random() > 0.5 ? 0 : 254);
+    if (strategy === 'random')   return String(Math.floor(Math.random() * 1000));
+    // normal — pick a mid-range value that's actually interesting
+    return String(10 + Math.floor(Math.random() * 90));
   };
 
   const autoGen = async () => {
@@ -1229,18 +1255,48 @@ const TestStudioInputs: React.FC<{ subpName: string; analysis: AdaAnalysisResult
                 </ul>
               )}
 
-              {/* Actual vs expected */}
-              {Object.keys(lastResult.actual || {}).length > 0 && (
+              {/* Execution summary — always shown after a run */}
+              {lastResult.status !== 'error' && (
                 <div className="ts-result-table ts-mono" style={{ marginTop: 6 }}>
-                  {Object.entries(lastResult.actual).map(([k, v]) => (
-                    <div key={k} className="ts-result-row">
-                      <span style={{ minWidth: 80 }}>{k}</span>
-                      <span className="ts-result-expected">expected: {expected[k] ?? '—'}</span>
-                      <span className={`ts-result-actual ${v === expected[k] ? 'ok' : 'bad'}`}>
+                  {/* Input values */}
+                  {Object.entries(lastResult.inputs || {}).map(([k, v]) => (
+                    <div key={`in_${k}`} className="ts-result-row">
+                      <span style={{ minWidth: 80, color: '#93c5fd' }}>{k}</span>
+                      <span style={{ fontSize: 10, color: '#6b7280', marginRight: 6 }}>in</span>
+                      <span className="ts-result-actual ok" style={{ marginLeft: 'auto' }}>
+                        {v}
+                      </span>
+                    </div>
+                  ))}
+                  {/* Separator between inputs and outputs when both exist */}
+                  {Object.keys(lastResult.inputs || {}).length > 0 &&
+                   Object.keys(lastResult.actual || {}).length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', margin: '4px 0' }} />
+                  )}
+                  {/* Output values vs expected */}
+                  {Object.entries(lastResult.actual || {}).map(([k, v]) => (
+                    <div key={`out_${k}`} className="ts-result-row">
+                      <span style={{ minWidth: 80, color: '#fb923c' }}>{k}</span>
+                      <span className="ts-result-expected">expected: {lastResult.expected?.[k] ?? '—'}</span>
+                      <span className={`ts-result-actual ${v === (lastResult.expected?.[k]) ? 'ok' : 'bad'}`}>
                         actual: {v}
                       </span>
                     </div>
                   ))}
+                  {/* When no outputs: show a note */}
+                  {Object.keys(lastResult.actual || {}).length === 0 && (
+                    <div className="ts-result-row" style={{ color: '#52525b', fontSize: 10 }}>
+                      <span>no output parameters</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Violation details (error state) */}
+              {lastResult.status === 'error' &&
+               (lastResult.violations?.length ?? 0) === 0 && (
+                <div style={{ fontSize: 10, color: '#71717a', marginTop: 4, fontFamily: 'monospace' }}>
+                  Check backend connection and that the file has been uploaded and parsed.
                 </div>
               )}
             </div>

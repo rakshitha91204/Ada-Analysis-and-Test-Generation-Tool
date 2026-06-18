@@ -83,14 +83,29 @@ function splitAnalysisByFile(
         const specMatch = specSubps.find(
           s => s.name.toLowerCase() === bodySubp.name.toLowerCase()
         );
-        if (specMatch && specMatch.parameters.length > 0 && bodySubp.parameters.length === 0) {
-          // Body has no params listed but spec does — use spec's params
-          return { ...bodySubp, parameters: specMatch.parameters };
+        if (!specMatch) return bodySubp;
+
+        let enriched = { ...bodySubp };
+
+        // Use spec params if body has none OR body params all have Unknown/empty types
+        const bodyHasDegradedParams = enriched.parameters.length === 0 ||
+          enriched.parameters.every((p: string) => {
+            const colonIdx = p.indexOf(':');
+            if (colonIdx === -1) return true;
+            const typePart = p.slice(colonIdx + 1).replace(/^(in\s+out|in|out)\s*/i, '').trim();
+            return !typePart || typePart.toLowerCase() === 'unknown';
+          });
+
+        if (specMatch.parameters.length > 0 && bodyHasDegradedParams) {
+          enriched = { ...enriched, parameters: specMatch.parameters };
         }
-        if (specMatch && specMatch.return_type && !bodySubp.return_type) {
-          return { ...bodySubp, return_type: specMatch.return_type, is_function: true };
+
+        // Fill in missing return type from spec
+        if (specMatch.return_type && !enriched.return_type) {
+          enriched = { ...enriched, return_type: specMatch.return_type, is_function: true };
         }
-        return bodySubp;
+
+        return enriched;
       });
       // Also add any spec-only declarations not in the body index
       for (const specSubp of specSubps) {

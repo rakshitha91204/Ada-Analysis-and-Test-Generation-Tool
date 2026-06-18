@@ -137,18 +137,55 @@ app.add_middleware(
 # ── Type constraint helpers (from correction/ada_test_studio/backend/api_server.py) ──
 
 def _type_constraint(type_str: str) -> dict:
-    """Return min/max/kind for a given Ada type string (case-insensitive)."""
+    """Return min/max/kind for a given Ada type string (case-insensitive).
+    Handles libadalang-produced strings like 'Integer range 0 .. 100',
+    'Natural range 1 .. 50', package-prefixed types like 'Standard.Integer',
+    and modular types like 'mod 256'.
+    """
     tl = (type_str or "").lower().strip()
-    if "uint16"    in tl: return {"kind": "integer", "min": 0,           "max": 65535}
-    if "uint32"    in tl: return {"kind": "integer", "min": 0,           "max": 4294967295}
-    if "uint8"     in tl: return {"kind": "integer", "min": 0,           "max": 255}
-    if "positive"  in tl: return {"kind": "integer", "min": 1,           "max": 2147483647}
-    if "natural"   in tl: return {"kind": "integer", "min": 0,           "max": 2147483647}
-    if "integer"   in tl: return {"kind": "integer", "min": -2147483648, "max": 2147483647}
-    if "float"     in tl: return {"kind": "float",   "min": -1e38,       "max": 1e38}
-    if "boolean"   in tl: return {"kind": "boolean",  "values": ["True", "False"]}
-    if "character" in tl: return {"kind": "character"}
-    if "string"    in tl: return {"kind": "string"}
+
+    # Strip package prefix ONLY for simple dotted names like "Standard.Integer"
+    # Do NOT strip when the string contains spaces (e.g. "Integer range 0 .. 100")
+    if "." in tl and " " not in tl:
+        tl = tl.split(".")[-1].strip()
+
+    # Handle range constraints: "integer range 0 .. 100" → extract base type + bounds
+    import re as _re
+    range_match = _re.match(r'^(\w+)\s+range\s+(-?\d+)\s*\.\.\s*(-?\d+)', tl)
+    if range_match:
+        base = range_match.group(1)
+        lo   = int(range_match.group(2))
+        hi   = int(range_match.group(3))
+        if base in ("integer", "natural", "positive", "long_integer",
+                    "short_integer", "short_short_integer"):
+            return {"kind": "integer", "min": lo, "max": hi}
+        if base in ("float", "long_float", "double"):
+            return {"kind": "float", "min": float(lo), "max": float(hi)}
+
+    # Modular types: "mod 256" → integer 0..255
+    mod_match = _re.match(r'^(?:\w+\s+)?mod\s+(\d+)', tl)
+    if mod_match:
+        m = int(mod_match.group(1))
+        return {"kind": "integer", "min": 0, "max": m - 1}
+
+    # Standard named types (order matters — more specific first)
+    if "uint32"        in tl or "word"          in tl: return {"kind": "integer", "min": 0,           "max": 4294967295}
+    if "uint16"        in tl:                           return {"kind": "integer", "min": 0,           "max": 65535}
+    if "uint8"         in tl or "byte"          in tl: return {"kind": "integer", "min": 0,           "max": 255}
+    if "positive"      in tl:                           return {"kind": "integer", "min": 1,           "max": 2147483647}
+    if "natural"       in tl:                           return {"kind": "integer", "min": 0,           "max": 2147483647}
+    if "long_integer"  in tl:                           return {"kind": "integer", "min": -2147483648, "max": 2147483647}
+    if "integer_8"     in tl:                           return {"kind": "integer", "min": -128,        "max": 127}
+    if "integer_16"    in tl:                           return {"kind": "integer", "min": -32768,      "max": 32767}
+    if "integer"       in tl:                           return {"kind": "integer", "min": -2147483648, "max": 2147483647}
+    if "long_float"    in tl or "double"        in tl: return {"kind": "float",   "min": -1e38,       "max": 1e38}
+    if "float"         in tl:                           return {"kind": "float",   "min": -1e38,       "max": 1e38}
+    if "boolean"       in tl:                           return {"kind": "boolean", "values": ["True", "False"]}
+    if "character"     in tl:                           return {"kind": "character"}
+    if "string"        in tl or "unbounded"     in tl: return {"kind": "string"}
+    # Common Ada index/count subtypes
+    if "index"         in tl or "count"         in tl: return {"kind": "integer", "min": 0,           "max": 2147483647}
+    if "size"          in tl or "length"        in tl: return {"kind": "integer", "min": 0,           "max": 2147483647}
     return {"kind": "unknown"}
 
 
@@ -212,7 +249,8 @@ def _simulate_execution_basic(subp_name: str, inputs: dict, expected: dict) -> d
             f"Note: Upload and parse the source file for full type-validated testing."
         )
         return {"status": "pass", "message": "Executed (no assertions)", "explanation": explanation,
-                "actual": {}, "elapsed_ms": elapsed, "normalized_types": {}}
+                "actual": {}, "inputs_echo": {f"[in] {k}": v for k, v in inputs.items()},
+                "elapsed_ms": elapsed, "normalized_types": {}}
 
     if passed:
         matches = ", ".join(f"{k}={actual.get(k,'?')}" for k in expected)
@@ -233,6 +271,7 @@ def _simulate_execution_basic(subp_name: str, inputs: dict, expected: dict) -> d
         "message": "All assertions passed" if passed else f"Output mismatch",
         "explanation": explanation,
         "actual":  actual,
+        "inputs_echo": {f"[in] {k}": v for k, v in inputs.items()},
         "elapsed_ms": elapsed,
         "normalized_types": {},
     }
@@ -287,6 +326,10 @@ def _simulate_execution(subp_name: str, inputs: dict, expected: dict, subp_data_
     elapsed = round((time.monotonic() - t0) * 1000, 2)
     passed  = all(actual.get(k, "?") == v for k, v in expected.items())
 
+    # Always include input values in actual so the UI can show them
+    # Prefix with "in:" to distinguish from output values
+    inputs_echo = {f"[in] {k}": v for k, v in inputs.items()}
+
     # Build detailed explanation
     if passed:
         if expected:
@@ -323,6 +366,7 @@ def _simulate_execution(subp_name: str, inputs: dict, expected: dict, subp_data_
         "message": "All assertions passed" if passed else f"Output mismatch ({len([k for k in expected if actual.get(k) != expected[k]])} failed)",
         "explanation": explanation,
         "actual":  actual,
+        "inputs_echo": inputs_echo,
         "elapsed_ms": elapsed,
         "normalized_types": normalized_types,
     }
@@ -516,7 +560,7 @@ def _build_enriched_subprograms() -> list:
                 if p.get("subprogram") == name and p.get("name"):
                     t = p.get("type", "Unknown") or "Unknown"
                     if t == "Unknown":
-                        t = _resolve_var_type_from_registry(p["name"], cf_data)
+                        t = _resolve_var_type_from_registry(p["name"], file_vars)
                     _add(p["name"], t, "param",
                          source=f"{p.get('mode','in')} parameter")
 
@@ -524,7 +568,7 @@ def _build_enriched_subprograms() -> list:
                 if v.get("subprogram") == name and v.get("name"):
                     t = v.get("type", "Unknown") or "Unknown"
                     if t == "Unknown":
-                        t = _resolve_var_type_from_registry(v["name"], cf_data)
+                        t = _resolve_var_type_from_registry(v["name"], file_vars)
                     init = v.get("default") or ""
                     _add(v["name"], t,
                          "constant" if v.get("is_constant") else "local",
@@ -539,7 +583,7 @@ def _build_enriched_subprograms() -> list:
                 if g.get("name") in used_global_names:
                     t = g.get("type", "Unknown") or "Unknown"
                     if t == "Unknown":
-                        t = _resolve_var_type_from_registry(g["name"], cf_data)
+                        t = _resolve_var_type_from_registry(g["name"], file_vars)
                     init = g.get("default") or ""
                     _add(g["name"], t,
                          "constant" if g.get("is_constant") else "global",
@@ -571,7 +615,7 @@ def _build_enriched_subprograms() -> list:
                         t = type_clean
                         # fallback: try registry if type came out empty
                         if not t or t == "Unknown":
-                            t = _resolve_var_type_from_registry(pname, cf_data)
+                            t = _resolve_var_type_from_registry(pname, file_vars)
                         _add(pname, t, "param", source=f"{dir_kw} parameter")
 
             # ── Pass 2: locals / globals / constants ──────────────────────
@@ -595,10 +639,10 @@ def _build_enriched_subprograms() -> list:
                                     t  = dt.get("type", "Unknown") if isinstance(dt, dict) else str(dt)
                                     break
                         if t in ("Unknown", "", None):
-                            # try registry field lookup
-                            rec_type = _resolve_var_type_from_registry(rec_var, cf_data)
+                            # try registry field lookup (pass file_vars which has __registry__)
+                            rec_type = _resolve_var_type_from_registry(rec_var, file_vars)
                             if rec_type not in ("Unknown", "", None):
-                                t = _resolve_field_type(rec_type, field_nm, cf_data)
+                                t = _resolve_field_type(rec_type, field_nm, file_vars)
                         key = vname.lower()
                         if key not in seen:
                             seen.add(key)
@@ -617,7 +661,7 @@ def _build_enriched_subprograms() -> list:
 
                     # ── plain variable ────────────────────────────────────
                     if t in ("Unknown", "", None):
-                        t = _resolve_var_type_from_registry(vname, cf_data)
+                        t = _resolve_var_type_from_registry(vname, file_vars)
                     # pull initial value for constants / declared vars
                     init = ""
                     if is_const and isinstance(vtype, dict):
@@ -635,9 +679,9 @@ def _build_enriched_subprograms() -> list:
                 if "." in vname:
                     rec_var, field_nm = vname.split(".", 1)
                     if t in ("Unknown", "", None):
-                        rec_type = _resolve_var_type_from_registry(rec_var, cf_data)
+                        rec_type = _resolve_var_type_from_registry(rec_var, file_vars)
                         if rec_type not in ("Unknown", "", None):
-                            t = _resolve_field_type(rec_type, field_nm, cf_data)
+                            t = _resolve_field_type(rec_type, field_nm, file_vars)
                     key = vname.lower()
                     if key not in seen:
                         seen.add(key)
@@ -1005,7 +1049,11 @@ async def api_autofill(request: Request):
             # Specific names from bitmapped_drawing test files
             if "orida" in pn or "aran" in pn or "karan" in pn:
                 return "0" if strat == "edge" else str(random.randint(0, 255))
-            return "0" if strat == "edge" else "1"
+            # Last-resort: treat as generic integer with strategy-appropriate value
+            if strat == "edge":       return random.choice(["0", "255"])
+            if strat == "boundary":   return random.choice(["0", "1", "254", "255"])
+            if strat == "random":     return str(random.randint(0, 1000))
+            return str(random.randint(10, 200))   # normal: mid-range, not 0 or 1
 
     # Build values for all strategies — includes params AND variables (locals/globals)
     strategies_out = {}

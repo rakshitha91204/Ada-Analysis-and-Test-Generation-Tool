@@ -693,10 +693,18 @@ class VariablesAnalyzer:
                         ptype = "Unknown"
                         try:
                             ptype = _best_type_str(param) or "Unknown"
+                            # Double-fallback: try raw text if semantic resolution failed
                             if ptype == "Unknown":
+                                try:
+                                    ptype = param.f_type_expr.text.strip() or "Unknown"
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            # Log but don't swallow — try raw text as last resort
+                            try:
                                 ptype = param.f_type_expr.text.strip() or "Unknown"
-                        except Exception:
-                            pass
+                            except Exception:
+                                pass
                         mode = self._get_mode(param)
                         try:
                             pline = param.sloc_range.start.line
