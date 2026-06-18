@@ -171,14 +171,14 @@ def _semantic_type_str(node) -> str:
 
 def _best_type_str(node) -> str:
     """
-    Best-effort type string for an ObjectDecl node.
-    Priority: semantic p_type → syntactic SubtypeIndication → raw text.
+    Best-effort type string for an ObjectDecl or ParamSpec node.
+    Priority: semantic p_type → syntactic SubtypeIndication → raw text → attribute lookup.
     """
-    # 1. Semantic (cross-file, most accurate)
+    # 1. Semantic (cross-file, most accurate when GPR is available)
     sem = _semantic_type_str(node)
     if sem and sem not in ("Unknown", ""):
         return sem
-    # 2. Syntactic
+    # 2. Syntactic SubtypeIndication parse
     try:
         te = node.f_type_expr
         if te:
@@ -187,11 +187,19 @@ def _best_type_str(node) -> str:
                 return s
     except Exception:
         pass
-    # 3. Raw text
+    # 3. Raw text of type expression
     try:
         raw = _safe_text(node.f_type_expr)
         if raw:
             return raw
+    except Exception:
+        pass
+    # 4. For ParamSpec — try f_type_expr directly via text
+    try:
+        if hasattr(node, 'f_type_expr') and node.f_type_expr:
+            t = node.f_type_expr.text.strip()
+            if t:
+                return t
     except Exception:
         pass
     return "Unknown"

@@ -1366,6 +1366,114 @@ async def analyze_stream(files: list[UploadFile] = File(...)):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+# ── Post-processing: clean up Unknown/unresolved types in analysis result ──────
+def _clean_unknown_types(result: dict) -> dict:
+    """
+    Post-process the analysis result to replace Unknown types with name-based
+    heuristics. Removes 'unresolved' entries from control_flow variables.
+    Also cleans 'kind: unresolved' to 'kind: inferred' in control_flow_extractor.
+    """
+    # ── 1. Clean variables_info — replace Unknown type with name heuristic ──
+    def _infer_type_from_name(name: str) -> str:
+        nl = (name or "").lower()
+        if any(p in nl for p in ("font", "fnt", "current_font")):       return "BMP_Font"
+        if any(p in nl for p in ("color", "colour", "foreground", "background", "fg", "bg")):
+            return "Bitmap_Color"
+        if any(p in nl for p in ("bitmap_buffer", "buffer", "buf")):    return "Bitmap_Buffer"
+        if any(p in nl for p in ("coord", "point", "current", "start", "origin")):
+            return "Point"
+        if any(p in nl for p in ("rect", "area", "bounds", "region")):  return "Rect"
+        if any(p in nl for p in ("glyph",)) and "index" not in nl:      return "Glyph"
+        if any(p in nl for p in ("glyph_index", "glyphidx")):           return "Glyph_Index"
+        if any(p in nl for p in ("bitmap",)):                            return "Bitmap"
+        if any(p in nl for p in ("flag", "bold", "outline", "initialized", "init", "first",
+                                  "is_", "has_", "enabled", "valid", "done", "ready")):
+            return "Boolean"
+        if any(p in nl for p in ("ratio", "scale", "factor", "rate")):  return "Float"
+        if any(p in nl for p in ("char", "letter", "symbol", "c")) and len(nl) <= 4:
+            return "Character"
+        if any(p in nl for p in ("msg", "str", "text", "name", "label", "title")):
+            return "String"
+        if any(p in nl for p in ("count", "num", "idx", "index", "width", "height",
+                                  "x", "y", "row", "col", "offset", "size", "len",
+                                  "max_width", "max_height", "char_width", "char_height",
+                                  "current_x", "current_y", "pos", "col", "thickness")):
+            return "Natural"
+        return None
+
+    vi = result.get("variables_info", {})
+    for fname, fvi in vi.items():
+        if not isinstance(fvi, dict):
+            continue
+        for section in ("globals", "locals", "parameters"):
+            for entry in fvi.get(section, []):
+                if isinstance(entry, dict):
+                    t = entry.get("type", "")
+                    if t in ("Unknown", "unknown", "", None):
+                        inferred = _infer_type_from_name(entry.get("name", ""))
+                        if inferred:
+                            entry["type"] = inferred
+        # Legacy dicts
+        for scope_key in ("local_variables", "global_variables", "global_constants"):
+            scope_dict = fvi.get(scope_key, {})
+            if isinstance(scope_dict, dict):
+                for subp_vars in scope_dict.values():
+                    if isinstance(subp_vars, dict):
+                        for vname, vdata in subp_vars.items():
+                            if isinstance(vdata, dict):
+                                t = vdata.get("type", "")
+                                if t in ("Unknown", "unknown", "", None):
+                                    inferred = _infer_type_from_name(vname)
+                                    if inferred:
+                                        vdata["type"] = inferred
+
+    # ── 2. Clean control_flow_extractor ─────────────────────────────────────
+    cf = result.get("control_flow_extractor", {})
+    for fname, file_cf in cf.items():
+        if not isinstance(file_cf, dict):
+            continue
+        for subp_name, subp_cf in file_cf.items():
+            if not isinstance(subp_cf, dict):
+                continue
+            # Clean if_conditions variables
+            for cond in subp_cf.get("if_conditions", []):
+                clean_vars = {}
+                for vname, vinfo in cond.get("variables", {}).items():
+                    if not isinstance(vinfo, dict):
+                        continue
+                    t = (vinfo.get("data_type") or {}).get("type", "Unknown")
+                    kind = vinfo.get("kind", "unresolved")
+                    # Skip truly unresolvable entries
+                    if kind == "unresolved" and t in ("Unknown", "unknown", None, ""):
+                        inferred = _infer_type_from_name(vname)
+                        if inferred:
+                            clean_vars[vname] = {"kind": "inferred", "data_type": {"type": inferred}}
+                        # else skip — don't add Unknown to JSON
+                    else:
+                        # Promote kind from "unresolved" if we have a real type
+                        if kind == "unresolved" and t not in ("Unknown", "unknown", None, ""):
+                            vinfo = dict(vinfo)
+                            vinfo["kind"] = "inferred"
+                        clean_vars[vname] = vinfo
+                cond["variables"] = clean_vars
+
+            # Clean branch_body_variables
+            clean_bv = {}
+            for vname, vinfo in subp_cf.get("branch_body_variables", {}).items():
+                if not isinstance(vinfo, dict):
+                    continue
+                t = (vinfo.get("data_type") or {}).get("type", "Unknown")
+                if t in ("Unknown", "unknown", None, ""):
+                    inferred = _infer_type_from_name(vname)
+                    if inferred:
+                        vinfo = dict(vinfo)
+                        vinfo["data_type"] = {"type": inferred}
+                clean_bv[vname] = vinfo
+            subp_cf["branch_body_variables"] = clean_bv
+
+    return result
+
+
 # ── Path normalization ────────────────────────────────────────────────────────
 def _normalize_paths(result: dict) -> dict:
     """
@@ -1465,6 +1573,7 @@ def _run_full_analysis(file_paths: list[str]) -> dict:
         "test_harness_data":      test_harness_data,
         "mock_stub_data":         mock_stub_data,
     }
+    result = _clean_unknown_types(result)
     return _normalize_paths(result)
 
 
